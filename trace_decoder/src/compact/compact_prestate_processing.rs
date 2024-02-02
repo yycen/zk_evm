@@ -1499,36 +1499,36 @@ mod tests {
     #[test]
     fn complex_payload_1() {
         init();
-        TEST_PAYLOAD_1.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_1.parse_and_check_hash_matches();
     }
 
     #[test]
     fn complex_payload_2() {
         init();
-        TEST_PAYLOAD_2.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_2.parse_and_check_hash_matches();
     }
 
     #[test]
     fn complex_payload_3() {
         init();
-        TEST_PAYLOAD_3.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_3.parse_and_check_hash_matches();
     }
 
     #[test]
     fn complex_payload_4() {
         init();
-        TEST_PAYLOAD_4.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_4.parse_and_check_hash_matches();
     }
 
     #[test]
     fn complex_payload_5() {
         init();
-        TEST_PAYLOAD_5.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_5.parse_and_check_hash_matches();
     }
 
     #[test]
     fn complex_payload_6() {
         init();
-        TEST_PAYLOAD_6.parse_and_check_hash_matches_with_debug();
+        TEST_PAYLOAD_6.parse_and_check_hash_matches();
     }
 }
