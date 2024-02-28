@@ -316,14 +316,18 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             }
         }
         TrackedNodeIntern::Leaf => {
-            let (k, _) = trie.info.get_leaf_nibbles_and_value_expected();
-            if k == curr_nibbles {
-                println!("MARKING LEAF!!!");
-                trie.info.touched = true;
-            }
-            else {
-                println!("NOT MARKING LEAF!! (leaf_k: {:x} vs. curr_nibs: {:x})", k, curr_nibbles);
-            }
+            // let (k, _) = trie.info.get_leaf_nibbles_and_value_expected();
+
+            // Always mark?
+            trie.info.touched = true;
+
+            // if k == curr_nibbles {
+            //     println!("MARKING LEAF!!!");
+                
+            // }
+            // else {
+            //     println!("NOT MARKING LEAF!! (leaf_k: {:x} vs. curr_nibs: {:x})", k, curr_nibbles);
+            // }
         }
     }
 
