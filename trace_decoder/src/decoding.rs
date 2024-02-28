@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
-    iter::{self, once},
+    iter::{self, empty, once},
+    str::FromStr,
 };
 
 use ethereum_types::{Address, H256, U256};
@@ -9,6 +10,7 @@ use evm_arithmetization::{
     generation::{mpt::AccountRlp, GenerationInputs, TrieInputs},
     proof::{ExtraBlockData, TrieRoots},
 };
+use log::trace;
 use mpt_trie::{
     nibbles::Nibbles,
     partial_trie::{HashedPartialTrie, Node, PartialTrie},
@@ -122,6 +124,8 @@ impl ProcessedBlockTrace {
             .into_iter()
             .enumerate()
             .map(|(txn_idx, txn_info)| {
+                trace!("Generating proof IR for txn {}...", txn_idx);
+
                 // For each non-dummy txn, we increment `txn_number_after` by 1, and
                 // update `gas_used_after` accordingly.
                 extra_data.txn_number_after += U256::one();
@@ -741,8 +745,18 @@ fn create_trie_subset_wrapped(
     accesses: impl Iterator<Item = Nibbles>,
     trie_type: TrieType,
 ) -> TraceParsingResult<HashedPartialTrie> {
-    create_trie_subset(trie, accesses)
-        .map_err(|_| TraceParsingError::MissingKeysCreatingSubPartialTrie(trie_type))
+    let accesses: Vec<_> = accesses.collect();
+
+    let res = create_trie_subset(trie, accesses.iter().cloned())
+        .map_err(|_| TraceParsingError::MissingKeysCreatingSubPartialTrie(trie_type));
+
+    if let Ok(t) = &res {
+        for acc in accesses {
+            assert!(t.get(acc).is_some());
+        }
+    }
+
+    res
 }
 
 fn account_from_rlped_bytes(bytes: &[u8]) -> TraceParsingResult<AccountRlp> {

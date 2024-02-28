@@ -25,7 +25,7 @@ use crate::utils::{
     print_value_and_hash_nodes_of_trie,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ProcessedBlockTrace {
     pub(crate) tries: PartialTriePreImages,
     pub(crate) txn_info: Vec<ProcessedTxnInfo>,
@@ -89,7 +89,11 @@ impl BlockTrace {
         let txn_info = self
             .txn_info
             .into_iter()
-            .map(|t| t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver))
+            .enumerate()
+            .map(|(i, t)| {
+                println!("PROCESSING TXN {}!", i);
+                t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver)
+            })
             .collect::<Vec<_>>();
 
         ProcessedBlockTrace {
@@ -191,7 +195,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ProcessedTxnInfo {
     pub(crate) nodes_used_by_txn: NodesUsedByTxn,
     pub(crate) contract_code_accessed: HashMap<CodeHash, Vec<u8>>,
@@ -369,7 +373,7 @@ pub(crate) type StorageAccess = Vec<HashedStorageAddrNibbles>;
 pub(crate) type StorageWrite = Vec<(HashedStorageAddrNibbles, Vec<u8>)>;
 
 /// Note that "*_accesses" includes writes.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct NodesUsedByTxn {
     pub(crate) state_accesses: Vec<HashedNodeAddr>,
     pub(crate) state_writes: Vec<(HashedAccountAddr, StateTrieWrites)>,
@@ -382,7 +386,7 @@ pub(crate) struct NodesUsedByTxn {
     pub(crate) self_destructed_accounts: Vec<HashedAccountAddr>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct StateTrieWrites {
     pub(crate) balance: Option<U256>,
     pub(crate) nonce: Option<U256>,
@@ -390,7 +394,7 @@ pub(crate) struct StateTrieWrites {
     pub(crate) code_hash: Option<CodeHash>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct TxnMetaState {
     pub(crate) txn_bytes: Option<Vec<u8>>,
     pub(crate) receipt_node_bytes: Vec<u8>,
