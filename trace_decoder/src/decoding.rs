@@ -127,6 +127,18 @@ impl ProcessedBlockTrace {
             .map(|(txn_idx, txn_info)| {
                 trace!("Generating proof IR for txn {}...", txn_idx);
 
+                Self::init_any_needed_empty_storage_tries(
+                    &mut curr_block_tries.storage,
+                    txn_info
+                        .nodes_used_by_txn
+                        .storage_accesses
+                        .iter()
+                        .map(|(k, _)| k),
+                    &txn_info
+                        .nodes_used_by_txn
+                        .state_accounts_with_no_accesses_but_storage_tries,
+                );
+
                 // For each non-dummy txn, we increment `txn_number_after` by 1, and
                 // update `gas_used_after` accordingly.
                 extra_data.txn_number_after += U256::one();
@@ -144,18 +156,6 @@ impl ProcessedBlockTrace {
                     &txn_info.nodes_used_by_txn,
                     &txn_info.meta,
                 )?;
-
-                Self::init_any_needed_empty_storage_tries(
-                    &mut curr_block_tries.storage,
-                    txn_info
-                        .nodes_used_by_txn
-                        .storage_accesses
-                        .iter()
-                        .map(|(k, _)| k),
-                    &txn_info
-                        .nodes_used_by_txn
-                        .state_accounts_with_no_accesses_but_storage_tries,
-                );
 
                 let tries = Self::create_minimal_partial_tries_needed_by_txn(
                     &tries_at_start_of_txn,
@@ -305,19 +305,22 @@ impl ProcessedBlockTrace {
                 TraceParsingError::MissingAccountStorageTrie(*hashed_acc_addr),
             )?;
 
-            for (slot, val) in storage_writes.iter().map(|(k, v)| (k, v)) {
+            for (slot, val) in storage_writes
+                .iter()
+                .map(|(k, v)| (Nibbles::from_h256_be(hash(&k.bytes_be())), v))
+            {
                 // If we are writing a zero, then we actually need to perform a delete.
                 match val == &ZERO_STORAGE_SLOT_VAL_RLPED {
-                    false => storage_trie.insert(*slot, val.clone()),
+                    false => storage_trie.insert(slot, val.clone()),
                     true => {
                         if Self::delete_node_and_report_if_it_resulted_in_branch_collapse(
                             storage_trie,
-                            slot,
+                            &slot,
                         ) {
                             out.additional_storage_trie_paths_to_not_hash
                                 .entry(*hashed_acc_addr)
                                 .or_default()
-                                .push(*slot);
+                                .push(slot);
                         }
                     }
                 };
