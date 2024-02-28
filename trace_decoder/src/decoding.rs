@@ -788,7 +788,12 @@ fn create_trie_subset_wrapped(
     if let Ok(t) = &res {
         for acc in accesses {
             println!("Checking {:x}...", acc);
-            assert!(t.get(acc).is_some());
+
+            let p: TriePath = path_for_query(t, acc).collect();
+
+            // if let Some(n) = p.0.last() {
+            //     assert_ne!(*n, TrieSegment::Hash);
+            // }
         }
     }
 

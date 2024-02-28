@@ -4,7 +4,7 @@
 use crate::{
     nibbles::Nibbles,
     partial_trie::{Node, PartialTrie, WrappedNode},
-    utils::TrieSegment,
+    utils::{TrieNodeType, TrieSegment},
 };
 
 /// An iterator for a trie query. Note that this iterator is lazy.
@@ -25,6 +25,8 @@ impl<T: PartialTrie> Iterator for TriePathIter<T> {
     type Item = TrieSegment;
 
     fn next(&mut self) -> Option<Self::Item> {
+        println!("Iter key: {:x}, node type: {}", self.curr_key, TrieNodeType::from(&self.curr_node));
+
         if self.terminated {
             return None;
         }
@@ -35,6 +37,7 @@ impl<T: PartialTrie> Iterator for TriePathIter<T> {
                 Some(TrieSegment::Empty)
             }
             Node::Hash(_) => {
+                println!("Start of hash!");
                 self.terminated = true;
                 Some(TrieSegment::Hash)
             }
@@ -47,6 +50,8 @@ impl<T: PartialTrie> Iterator for TriePathIter<T> {
 
                 let nib = self.curr_key.pop_next_nibble_front();
                 self.curr_node = children[nib as usize].clone();
+
+                println!("Branch child at {:x}", nib);
 
                 Some(TrieSegment::Branch(nib))
             }
