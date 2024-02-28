@@ -132,6 +132,8 @@ impl ProcessedBlockTrace {
                 extra_data.txn_number_after += U256::one();
                 extra_data.gas_used_after += txn_info.meta.gas_used.into();
 
+                Self::update_txn_and_receipt_tries(&mut curr_block_tries, &txn_info.meta, txn_idx);
+
                 // Because we need to run delta application before creating the minimal
                 // sub-tries (we need to detect if deletes collapsed any branches), we need to
                 // do this clone every iteration.
@@ -200,6 +202,19 @@ impl ProcessedBlockTrace {
         }
 
         Ok(txn_gen_inputs)
+    }
+
+    fn update_txn_and_receipt_tries(
+        trie_state: &mut PartialTrieState,
+        meta: &TxnMetaState,
+        txn_idx: TxnIdx,
+    ) {
+        let txn_k = Nibbles::from_bytes_be(&rlp::encode(&txn_idx)).unwrap();
+        trie_state.txn.insert(txn_k, meta.txn_bytes());
+
+        trie_state
+            .receipt
+            .insert(txn_k, meta.receipt_node_bytes.as_ref());
     }
 
     fn create_minimal_partial_tries_needed_by_txn(
@@ -330,13 +345,6 @@ impl ProcessedBlockTrace {
                 out.additional_state_trie_paths_to_not_hash.push(k);
             }
         }
-
-        let txn_k = Nibbles::from_bytes_be(&rlp::encode(&txn_idx)).unwrap();
-        trie_state.txn.insert(txn_k, meta.txn_bytes());
-
-        trie_state
-            .receipt
-            .insert(txn_k, meta.receipt_node_bytes.as_ref());
 
         Ok(out)
     }
