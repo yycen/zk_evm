@@ -15,6 +15,7 @@ use mpt_trie::{
     nibbles::Nibbles,
     partial_trie::{HashedPartialTrie, Node, PartialTrie},
     special_query::path_for_query,
+    trie_ops::ValOrHash,
     trie_subsets::create_trie_subset,
     utils::{TriePath, TrieSegment},
 };
@@ -73,7 +74,7 @@ impl Display for TrieType {
 
 /// The current state of all tries as we process txn deltas. These are mutated
 /// after every txn we process in the trace.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct PartialTrieState {
     state: HashedPartialTrie,
     storage: HashMap<HashedAccountAddr, HashedPartialTrie>,
@@ -131,6 +132,11 @@ impl ProcessedBlockTrace {
                 extra_data.txn_number_after += U256::one();
                 extra_data.gas_used_after += txn_info.meta.gas_used.into();
 
+                // Because we need to run delta application before creating the minimal
+                // sub-tries (we need to detect if deletes collapsed any branches), we need to
+                // do this clone every iteration.
+                let mut tries_at_start_of_txn = curr_block_tries.clone();
+
                 let delta_out = Self::apply_deltas_to_trie_state(
                     &mut curr_block_tries,
                     &txn_info.nodes_used_by_txn,
@@ -139,7 +145,7 @@ impl ProcessedBlockTrace {
                 )?;
 
                 let tries = Self::create_minimal_partial_tries_needed_by_txn(
-                    &mut curr_block_tries,
+                    &mut tries_at_start_of_txn,
                     &txn_info.nodes_used_by_txn,
                     txn_idx,
                     delta_out,
@@ -212,10 +218,14 @@ impl ProcessedBlockTrace {
         )?;
 
         let txn_k = Nibbles::from_bytes_be(&rlp::encode(&txn_idx)).unwrap();
+
+        println!("TXN TRIE!");
+        println!("{:#?}", curr_block_tries.txn);
         // TODO: Replace cast once `mpt_trie` supports `into` for `usize...
         let transactions_trie =
             create_trie_subset_wrapped(&curr_block_tries.txn, once(txn_k), TrieType::Txn)?;
 
+        println!("RECEIPT TRIE!");
         let receipts_trie =
             create_trie_subset_wrapped(&curr_block_tries.receipt, once(txn_k), TrieType::Receipt)?;
 
@@ -689,6 +699,7 @@ fn create_minimal_state_partial_trie(
     state_accesses: impl Iterator<Item = HashedNodeAddr>,
     additional_state_trie_paths_to_not_hash: impl Iterator<Item = Nibbles>,
 ) -> TraceParsingResult<HashedPartialTrie> {
+    println!("Creating sub state trie...");
     create_trie_subset_wrapped(
         state_trie,
         state_accesses
@@ -709,6 +720,8 @@ fn create_minimal_storage_partial_tries<'a>(
 ) -> TraceParsingResult<Vec<(HashedAccountAddr, HashedPartialTrie)>> {
     accesses_per_account
         .map(|(h_addr, mem_accesses)| {
+            println!("SUB-STORAGE TRIE FOR {:x}...", h_addr);
+
             // TODO: Clean up...
             let base_storage_trie = match storage_tries.get(&H256(h_addr.0)) {
                 Some(s_trie) => s_trie,
@@ -729,12 +742,25 @@ fn create_minimal_storage_partial_tries<'a>(
                     .flat_map(|slots| slots.iter().cloned()),
             );
 
+            println!(
+                "{:#?}",
+                base_storage_trie
+                    .items()
+                    .map(|(k, v)| {
+                        let s = match v {
+                            ValOrHash::Val(_) => "V",
+                            ValOrHash::Hash(_) => "H",
+                        };
+                        format!("{:x} --> {}", k, s)
+                    })
+                    .collect::<Vec<_>>()
+            );
+
             let partial_storage_trie = create_trie_subset_wrapped(
                 base_storage_trie,
                 storage_slots_to_not_hash,
                 TrieType::Storage,
             )?;
-
             Ok((*h_addr, partial_storage_trie))
         })
         .collect::<TraceParsingResult<_>>()
@@ -750,8 +776,10 @@ fn create_trie_subset_wrapped(
     let res = create_trie_subset(trie, accesses.iter().cloned())
         .map_err(|_| TraceParsingError::MissingKeysCreatingSubPartialTrie(trie_type));
 
+    println!("Asserting trie {:x}...", trie.hash());
     if let Ok(t) = &res {
         for acc in accesses {
+            println!("Checking {:x}...", acc);
             assert!(t.get(acc).is_some());
         }
     }
