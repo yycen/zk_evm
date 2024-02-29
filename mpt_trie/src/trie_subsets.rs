@@ -289,6 +289,7 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
                     *curr_nibbles,
                     format!("{:?}", trie),
                 ))
+                // trie.info.touched = true;
             }
             true => {
                 trie.info.touched = true;
@@ -323,11 +324,11 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
 
             // if k == curr_nibbles {
             //     println!("MARKING LEAF!!!");
-                
+
             // }
             // else {
-            //     println!("NOT MARKING LEAF!! (leaf_k: {:x} vs. curr_nibs: {:x})", k, curr_nibbles);
-            // }
+            //     println!("NOT MARKING LEAF!! (leaf_k: {:x} vs. curr_nibs:
+            // {:x})", k, curr_nibbles); }
         }
     }
 
@@ -347,7 +348,10 @@ fn create_partial_trie_subset_from_tracked_trie<N: PartialTrie>(
         }
     }
 
-    println!("Node {} marked!", TrieNodeType::from(tracked_node.info.underlying_node.deref()));
+    println!(
+        "Node {} marked!",
+        TrieNodeType::from(tracked_node.info.underlying_node.deref())
+    );
 
     match &tracked_node.node {
         TrackedNodeIntern::Empty => N::new(Node::Empty),

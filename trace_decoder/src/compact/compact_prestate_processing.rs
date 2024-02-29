@@ -15,6 +15,7 @@ use log::trace;
 use mpt_trie::{
     nibbles::{FromHexPrefixError, Nibbles},
     partial_trie::{HashedPartialTrie, PartialTrie},
+    trie_ops::ValOrHash,
 };
 use serde::de::DeserializeOwned;
 use thiserror::Error;
@@ -544,6 +545,7 @@ impl ParserState {
         storage_tries: &mut HashMap<HashedAccountAddr, HashedPartialTrie>,
         buf: &mut Vec<WitnessEntry>,
     ) -> CompactParsingResult<(usize, Option<AccountNodeCode>, Option<TrieRootHash>)> {
+        println!("NO CODE & STORAGE!!!");
         traverser.get_prev_n_elems_into_buf(1, buf);
 
         match buf[0].clone() {
@@ -562,6 +564,7 @@ impl ParserState {
         traverser: &mut CollapsableWitnessEntryTraverser,
         buf: &mut Vec<WitnessEntry>,
     ) -> CompactParsingResult<(usize, Option<AccountNodeCode>, Option<TrieRootHash>)> {
+        println!("CODE & NO STORAGE!!!");
         traverser.get_prev_n_elems_into_buf(1, buf);
 
         match buf[0].clone() {
@@ -580,6 +583,8 @@ impl ParserState {
         storage_tries: &mut HashMap<HashedAccountAddr, HashedPartialTrie>,
         buf: &mut Vec<WitnessEntry>,
     ) -> CompactParsingResult<(usize, Option<AccountNodeCode>, Option<TrieRootHash>)> {
+        println!("CODE & STORAGE!!!");
+
         traverser.get_prev_n_elems_into_buf(2, buf);
 
         match &buf[0..=1] {
@@ -616,12 +621,32 @@ impl ParserState {
             Some(storage_root_node) => {
                 let s_trie_out = create_partial_trie_from_compact_node(storage_root_node)?;
                 let s_trie_hash = s_trie_out.trie.hash();
+
+                println!("ADDING STORAGE TRIE WITH HASH {:x} to TABLE!!", s_trie_hash);
+                Self::print_trie(&s_trie_out.trie);
+
                 storage_tries.insert(s_trie_hash, s_trie_out.trie);
 
                 Ok((n, account_node_code, Some(s_trie_hash)))
             }
             None => Self::invalid_witness_err(n, TraverserDirection::Backwards, traverser),
         }
+    }
+
+    fn print_trie(t: &HashedPartialTrie) {
+        let out = t
+            .items()
+            .map(|(k, v)| {
+                let s = match v {
+                    ValOrHash::Val(_) => "L",
+                    ValOrHash::Hash(_) => "H",
+                };
+
+                format!("{:x} --> {}", k, s)
+            })
+            .collect::<Vec<_>>();
+
+        println!("{:#?}", out);
     }
 
     fn try_get_storage_root_node(node: &NodeEntry) -> Option<NodeEntry> {

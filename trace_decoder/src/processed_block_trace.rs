@@ -240,6 +240,8 @@ impl TxnInfo {
         for (addr, trace) in self.traces {
             let hashed_addr = hash(addr.as_bytes());
 
+            println!("{:x} --> {:x}", addr, hashed_addr);
+
             let storage_writes = trace.storage_written.unwrap_or_default();
 
             let storage_read_keys = trace

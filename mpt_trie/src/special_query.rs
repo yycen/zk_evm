@@ -25,7 +25,11 @@ impl<T: PartialTrie> Iterator for TriePathIter<T> {
     type Item = TrieSegment;
 
     fn next(&mut self) -> Option<Self::Item> {
-        println!("Iter key: {:x}, node type: {}", self.curr_key, TrieNodeType::from(&self.curr_node));
+        println!(
+            "Iter key: {:x}, node type: {}",
+            self.curr_key,
+            TrieNodeType::from(&self.curr_node)
+        );
 
         if self.terminated {
             return None;

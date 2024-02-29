@@ -102,6 +102,9 @@ fn process_hash(
 ) -> CompactParsingResult<()> {
     // If we see a hash node at this stage, it must be a hashed out node in the
     // trie.
+
+    println!("INSERTING HASH NODE AT {:x} (hash: {:x})", curr_key, hash);
+
     p_trie.insert(curr_key, hash);
 
     Ok(())
