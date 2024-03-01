@@ -5,7 +5,7 @@
 //! included in the produced subset. Any nodes that are not needed in the subset
 //! are replaced with [`Hash`] nodes are far up the trie as possible.
 
-use std::sync::Arc;
+use std::{borrow::Borrow, sync::Arc};
 
 use ethereum_types::H256;
 use log::trace;
@@ -42,6 +42,18 @@ enum TrackedNodeIntern<N: PartialTrie> {
 struct TrackedNode<N: PartialTrie> {
     node: TrackedNodeIntern<N>,
     info: TrackedNodeInfo<N>,
+}
+
+impl<N: PartialTrie> From<&TrackedNode<N>> for TrieNodeType {
+    fn from(v: &TrackedNode<N>) -> Self {
+        match &v.node {
+            TrackedNodeIntern::Empty => TrieNodeType::Empty,
+            TrackedNodeIntern::Hash => TrieNodeType::Hash,
+            TrackedNodeIntern::Branch(_) => TrieNodeType::Branch,
+            TrackedNodeIntern::Extension(_) => TrieNodeType::Extension,
+            TrackedNodeIntern::Leaf => TrieNodeType::Leaf,
+        }
+    }
 }
 
 impl<N: PartialTrie> TrackedNode<N> {
@@ -319,6 +331,8 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
 
             // Plonky2 requires that an extension pointing to a leaf is always unhashed if
             // the parent is also unhashed.
+
+            println!("Child type: {}", TrieNodeType::from(child.as_ref()));
             if r.nibbles_are_identical_up_to_smallest_count(nibbles) || child.node_is_leaf() {
                 trie.info.touched = true;
                 return mark_nodes_that_are_needed(child, curr_nibbles);
