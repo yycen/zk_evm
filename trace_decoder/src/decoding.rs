@@ -144,12 +144,12 @@ impl ProcessedBlockTrace {
                 extra_data.txn_number_after += U256::one();
                 extra_data.gas_used_after += txn_info.meta.gas_used.into();
 
-                Self::update_txn_and_receipt_tries(&mut curr_block_tries, &txn_info.meta, txn_idx);
-
                 // Because we need to run delta application before creating the minimal
                 // sub-tries (we need to detect if deletes collapsed any branches), we need to
                 // do this clone every iteration.
                 let tries_at_start_of_txn = curr_block_tries.clone();
+
+                Self::update_txn_and_receipt_tries(&mut curr_block_tries, &txn_info.meta, txn_idx);
 
                 let delta_out = Self::apply_deltas_to_trie_state(
                     &mut curr_block_tries,
