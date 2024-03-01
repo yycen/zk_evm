@@ -44,6 +44,12 @@ struct TrackedNode<N: PartialTrie> {
     info: TrackedNodeInfo<N>,
 }
 
+impl<N: PartialTrie> TrackedNode<N> {
+    fn node_is_leaf(&self) -> bool {
+        matches!(self.node, TrackedNodeIntern::Leaf)
+    }
+}
+
 impl<N: Clone + PartialTrie> TrackedNode<N> {
     fn new(underlying_node: &N) -> Self {
         Self {
@@ -311,24 +317,17 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             let nibbles = trie.info.get_nibbles_expected();
             let r = curr_nibbles.pop_nibbles_front(nibbles.count);
 
-            if r.nibbles_are_identical_up_to_smallest_count(nibbles) {
+            // Plonky2 requires that an extension pointing to a leaf is always unhashed if
+            // the parent is also unhashed.
+            if r.nibbles_are_identical_up_to_smallest_count(nibbles) || child.node_is_leaf() {
                 trie.info.touched = true;
                 return mark_nodes_that_are_needed(child, curr_nibbles);
             }
         }
         TrackedNodeIntern::Leaf => {
-            // let (k, _) = trie.info.get_leaf_nibbles_and_value_expected();
-
-            // Always mark?
+            // Plonky2 requires that a leaf is always unhashed if the parent is also
+            // unhashed.
             trie.info.touched = true;
-
-            // if k == curr_nibbles {
-            //     println!("MARKING LEAF!!!");
-
-            // }
-            // else {
-            //     println!("NOT MARKING LEAF!! (leaf_k: {:x} vs. curr_nibs:
-            // {:x})", k, curr_nibbles); }
         }
     }
 
