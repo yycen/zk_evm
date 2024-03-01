@@ -52,6 +52,8 @@ pub(crate) struct Interpreter<F: Field> {
     /// Counts the number of appearances of each opcode. For debugging purposes.
     pub(crate) opcode_count: [usize; 0x100],
     jumpdest_table: HashMap<usize, BTreeSet<usize>>,
+    /// Contexts to prune from memory at the end of the execution.
+    pub(crate) stale_contexts: Vec<usize>,
     /// `true` if the we are currently carrying out a jumpdest analysis.
     pub(crate) is_jumpdest_analysis: bool,
     /// Holds the value of the clock: the clock counts the number of operations
@@ -283,6 +285,7 @@ impl<F: Field> Interpreter<F> {
             halt_context: None,
             opcode_count: [0; 256],
             jumpdest_table: HashMap::new(),
+            stale_contexts: Vec::new(),
             is_jumpdest_analysis: false,
             clock: 0,
             max_cpu_len_log,
@@ -314,6 +317,7 @@ impl<F: Field> Interpreter<F> {
             halt_context: Some(halt_context),
             opcode_count: [0; 256],
             jumpdest_table: HashMap::new(),
+            stale_contexts: Vec::new(),
             is_jumpdest_analysis: true,
             clock: 0,
             max_cpu_len_log,
@@ -996,8 +1000,18 @@ impl<F: Field> State<F> for Interpreter<F> {
         self.halt_offsets.clone()
     }
 
+    fn push_interpreter_stale_context(&mut self, ctx: usize) {
+        if !self.is_jumpdest_analysis {
+            self.stale_contexts.push(ctx);
+        }
+    }
+
     fn get_full_memory(&self) -> Option<MemoryState> {
-        Some(self.generation_state.memory.clone())
+        let mut unpruned_mem = self.generation_state.memory.clone();
+        for &ctx in self.stale_contexts.iter() {
+            unpruned_mem.contexts[ctx] = MemoryContextState::default();
+        }
+        Some(unpruned_mem)
     }
 
     fn update_interpreter_final_registers(&mut self, final_registers: RegistersState) {

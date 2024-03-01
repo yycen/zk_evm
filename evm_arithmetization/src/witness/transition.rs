@@ -533,7 +533,14 @@ where
             Operation::Pc => generate_pc(self, row)?,
             Operation::Jumpdest => generate_jumpdest(self, row)?,
             Operation::GetContext => generate_get_context(self, row)?,
-            Operation::SetContext => generate_set_context(self, row)?,
+            Operation::SetContext => {
+                let old_ctx = self.get_context();
+                generate_set_context(self, row)?;
+                let new_ctx = self.get_context();
+                if new_ctx < old_ctx {
+                    self.push_interpreter_stale_context(old_ctx);
+                }
+            }
             Operation::Mload32Bytes => generate_mload_32bytes(self, row)?,
             Operation::Mstore32Bytes(n) => generate_mstore_32bytes(n, self, row)?,
             Operation::ExitKernel => generate_exit_kernel(self, row)?,

@@ -161,6 +161,8 @@ pub(crate) trait State<F: Field> {
 
     fn update_interpreter_final_registers(&mut self, final_registers: RegistersState) {}
 
+    fn push_interpreter_stale_context(&mut self, ctx: usize) {}
+
     fn get_full_memory(&self) -> Option<MemoryState> {
         None
     }

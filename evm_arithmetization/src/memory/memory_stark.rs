@@ -6,6 +6,7 @@ use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::PolynomialValues;
 use plonky2::field::types::Field;
+use plonky2::gadgets::range_check;
 use plonky2::hash::hash_types::RichField;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::timed;
@@ -20,9 +21,10 @@ use starky::stark::Stark;
 use super::segments::Segment;
 use crate::all_stark::EvmStarkFrame;
 use crate::memory::columns::{
-    value_limb, ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL, CONTEXT_FIRST_CHANGE, COUNTER, FILTER,
-    FREQUENCIES, INITIALIZE_AUX, IS_READ, NUM_COLUMNS, RANGE_CHECK, SEGMENT_FIRST_CHANGE,
-    TIMESTAMP, TIMESTAMP_INV, VIRTUAL_FIRST_CHANGE,
+    value_limb, ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL, CONTEXT_FIRST_CHANGE, COUNTER,
+    CTX_FILTER, CTX_FLAG, FILTER, FREQUENCIES, INITIALIZE_AUX, IS_READ, MAX_CTX_DIFF, MAX_CTX_SIGN,
+    MAX_CTX_TIMESTAMP, MAX_DIFF, MAX_SIGN, MAX_TIMESTAMP, NUM_COLUMNS, RANGE_CHECK,
+    SEGMENT_FIRST_CHANGE, TIMESTAMP, TIMESTAMP_INV, VIRTUAL_FIRST_CHANGE,
 };
 use crate::memory::VALUE_LIMBS;
 use crate::witness::memory::MemoryOpKind::Read;
@@ -73,14 +75,7 @@ pub(crate) fn ctl_filter_mem_before<F: Field>() -> Filter<F> {
 /// The filter is `address_changed`.
 pub(crate) fn ctl_filter_mem_after<F: Field>() -> Filter<F> {
     Filter::new(
-        vec![(
-            Column::single(FILTER),
-            Column::sum([
-                CONTEXT_FIRST_CHANGE,
-                SEGMENT_FIRST_CHANGE,
-                VIRTUAL_FIRST_CHANGE,
-            ]),
-        )],
+        vec![(Column::single(FILTER), Column::single(CTX_FILTER))],
         vec![],
     )
 }
@@ -127,7 +122,7 @@ pub(crate) fn generate_first_change_flags_and_rc<F: RichField>(
     trace_rows: &mut [[F; NUM_COLUMNS]],
 ) {
     let num_ops = trace_rows.len();
-    for idx in 0..num_ops {
+    for idx in 0..num_ops - 1 {
         let row = trace_rows[idx].as_slice();
         let next_row = if idx == num_ops - 1 {
             trace_rows[0].as_slice()
@@ -207,11 +202,17 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         trace_rows
     }
 
-    /// Generates the `COUNTER`, `RANGE_CHECK` and `FREQUENCIES` columns, given
-    /// a trace in column-major form.
+    /// Generates the `COUNTER`, `RANGE_CHECK`, `FREQUENCIES`, `MAX_TIMESTAMP`
+    /// and `MAX_CTX_TIMESTAMP` columns, given a trace in column-major form.
     fn generate_trace_col_major(trace_col_vecs: &mut [Vec<F>]) {
         let height = trace_col_vecs[0].len();
         trace_col_vecs[COUNTER] = (0..height).map(|i| F::from_canonical_usize(i)).collect();
+
+        let first_timestamp = trace_col_vecs[TIMESTAMP][0];
+        trace_col_vecs[MAX_TIMESTAMP][0] = first_timestamp;
+        trace_col_vecs[MAX_CTX_TIMESTAMP][0] = first_timestamp;
+
+        let mut curr_ctx_start = 0;
 
         for i in 0..height {
             let x_rc = trace_col_vecs[RANGE_CHECK][i].to_canonical_u64() as usize;
@@ -228,7 +229,72 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                     trace_col_vecs[FREQUENCIES][0] += F::ONE;
                 }
             }
+            if i > 0 {
+                let prev_max_timestamp = trace_col_vecs[MAX_TIMESTAMP][i - 1];
+                let prev_max_ctx_timestamp = trace_col_vecs[MAX_CTX_TIMESTAMP][i - 1];
+                let curr_timestamp = trace_col_vecs[TIMESTAMP][i];
+                // Set max_timestamp. It's either the previous max_timestamp or the current
+                // timestamp.
+                if curr_timestamp.to_canonical_u64() > prev_max_timestamp.to_canonical_u64() {
+                    trace_col_vecs[MAX_TIMESTAMP][i] = curr_timestamp;
+                    trace_col_vecs[MAX_SIGN][i - 1] = F::ONE;
+                    trace_col_vecs[MAX_DIFF][i - 1] = curr_timestamp - prev_max_timestamp;
+                } else {
+                    trace_col_vecs[MAX_TIMESTAMP][i] = prev_max_timestamp;
+                    trace_col_vecs[MAX_DIFF][i - 1] = prev_max_timestamp - curr_timestamp;
+                }
+                let max_diff = trace_col_vecs[MAX_DIFF][i - 1];
+                trace_col_vecs[FREQUENCIES][max_diff.to_canonical_u64() as usize] += F::ONE;
+
+                // Set max_ctx_timestamp. If the context is changing, it's the current
+                // timestamp. Note that the unused diff column can be used to
+                // store the inverse of max_timestamp - max_ctx_timestamp.
+                if (trace_col_vecs[CONTEXT_FIRST_CHANGE][i - 1] == F::ONE) {
+                    trace_col_vecs[MAX_CTX_TIMESTAMP][i] = curr_timestamp;
+                    trace_col_vecs[MAX_CTX_DIFF][i - 1] = (prev_max_timestamp
+                        - prev_max_ctx_timestamp)
+                        .try_inverse()
+                        .unwrap_or_default();
+                // Otherwise, max_ctx_timestamp is either the previous
+                // max_ctx_timestamp or the current timestamp.
+                } else {
+                    if curr_timestamp.to_canonical_u64() > prev_max_ctx_timestamp.to_canonical_u64()
+                    {
+                        trace_col_vecs[MAX_CTX_TIMESTAMP][i] = curr_timestamp;
+                        trace_col_vecs[MAX_CTX_SIGN][i - 1] = F::ONE;
+                        trace_col_vecs[MAX_CTX_DIFF][i - 1] =
+                            curr_timestamp - prev_max_ctx_timestamp;
+                    } else {
+                        trace_col_vecs[MAX_CTX_TIMESTAMP][i] = prev_max_ctx_timestamp;
+                        trace_col_vecs[MAX_CTX_DIFF][i - 1] =
+                            prev_max_ctx_timestamp - curr_timestamp;
+                    }
+                    let max_ctx_diff = trace_col_vecs[MAX_CTX_DIFF][i - 1];
+                    trace_col_vecs[FREQUENCIES][max_ctx_diff.to_canonical_u64() as usize] += F::ONE;
+                }
+
+                if (trace_col_vecs[CONTEXT_FIRST_CHANGE][i - 1] == F::ONE) {
+                    if trace_col_vecs[MAX_TIMESTAMP][i - 1]
+                        == trace_col_vecs[MAX_CTX_TIMESTAMP][i - 1]
+                    {
+                        for row in curr_ctx_start..i {
+                            trace_col_vecs[CTX_FLAG][row] = F::ONE;
+                            if (trace_col_vecs[CONTEXT_FIRST_CHANGE][row]
+                                + trace_col_vecs[SEGMENT_FIRST_CHANGE][row]
+                                + trace_col_vecs[VIRTUAL_FIRST_CHANGE][row]
+                                == F::ONE)
+                            {
+                                trace_col_vecs[CTX_FILTER][row] = F::ONE;
+                            }
+                        }
+                    }
+                    curr_ctx_start = i;
+                }
+            }
         }
+
+        // At the last row, both max_diff and max_ctx_diff are zero.
+        trace_col_vecs[FREQUENCIES][0] += F::TWO;
     }
 
     /// This memory STARK orders rows by `(context, segment, virt, timestamp)`.
@@ -290,23 +356,31 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
     fn pad_memory_ops(memory_ops: &mut Vec<MemoryOp>) {
         let last_op = *memory_ops.last().expect("No memory ops?");
 
-        // We essentially repeat the last operation until our operation list has the
+        // We essentially repeat an operation until our operation list has the
         // desired size, with a few changes:
         // - We change its filter to 0 to indicate that this is a dummy operation.
         // - We make sure it's a read, since dummy operations must be reads.
+        // - We change context so that context pruning is properly verified. In
+        //   addition, it ensures the last (non-dummy) operation is taken into account
+        //   for MemAfter.
+        // - Timestamp is 1 just so it's not 0 (reserved for MemBefore).
+
         let padding_addr = MemoryAddress {
-            virt: last_op.address.virt + 1,
-            ..last_op.address
+            context: last_op.address.context + 1,
+            segment: 0,
+            virt: 0,
         };
         let padding_op = MemoryOp {
             filter: false,
             kind: Read,
             address: padding_addr,
-            timestamp: last_op.timestamp + 1,
+            timestamp: 1,
             value: U256::zero(),
         };
         let num_ops = memory_ops.len();
-        let num_ops_padded = num_ops.next_power_of_two();
+        // We need at least one padding row for context pruning.
+        let num_ops_padded = (num_ops + 1).next_power_of_two();
+
         for _ in num_ops..num_ops_padded {
             memory_ops.push(padding_op);
         }
@@ -334,30 +408,33 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             "generate trace rows",
             self.generate_trace_row_major(memory_ops)
         );
-        // Extract final values for `MemoryAfterStark`.
-        let mut final_values = Vec::<Vec<_>>::new();
-        let trace_row_vecs: Vec<_> = trace_rows
-            .into_iter()
-            .map(|row| {
-                if row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE]
-                    == F::ONE
-                    && row[FILTER].is_one()
-                {
-                    let mut addr_val = vec![F::ONE];
-                    addr_val.extend(&row[ADDR_CONTEXT..CONTEXT_FIRST_CHANGE]);
-                    final_values.push(addr_val);
-                }
-                row.to_vec()
-            })
-            .collect();
+
+        let trace_row_vecs: Vec<_> = trace_rows.into_iter().map(|row| row.to_vec()).collect();
 
         // Transpose to column-major form.
         let mut trace_col_vecs = transpose(&trace_row_vecs);
 
-        // A few final generation steps, which work better in column-major form.
+        // A few generation steps, which work better in column-major form.
         Self::generate_trace_col_major(&mut trace_col_vecs);
 
-        let final_rows = transpose(&trace_col_vecs);
+        let mut final_rows = transpose(&trace_col_vecs);
+
+        // Extract final values for `MemoryAfterStark`.
+        let mut final_values = Vec::<Vec<_>>::new();
+        for i in 0..final_rows.len() {
+            let row = &mut final_rows[i];
+            let ctx_filter = row[CTX_FLAG]
+                * (row[CONTEXT_FIRST_CHANGE]
+                    + row[SEGMENT_FIRST_CHANGE]
+                    + row[VIRTUAL_FIRST_CHANGE]);
+            row[CTX_FILTER] = ctx_filter;
+
+            if row[FILTER].is_one() && row[CTX_FILTER].is_one() {
+                let mut addr_val = vec![F::ONE];
+                addr_val.extend(&row[ADDR_CONTEXT..CONTEXT_FIRST_CHANGE]);
+                final_values.push(addr_val);
+            }
+        }
 
         for row in 0..final_rows.len() - 1 {
             let next_addr_context = final_rows[row + 1][ADDR_CONTEXT];
@@ -496,6 +573,70 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
         // checked.
         let timestamp_inv = local_values[TIMESTAMP_INV];
         yield_constr.constraint(timestamp * (timestamp * timestamp_inv - P::ONES));
+
+        // Validate next_max_timestamp. It's either the previous value or the next
+        // timestamp.
+        let max_timestamp = local_values[MAX_TIMESTAMP];
+        let next_max_timestamp = next_values[MAX_TIMESTAMP];
+        let max_sign = local_values[MAX_SIGN];
+        yield_constr.constraint_transition(
+            max_sign * (next_max_timestamp - next_timestamp)
+                + (max_sign - P::ONES) * (next_max_timestamp - max_timestamp),
+        );
+        // Initialize with the first timestamp.
+        yield_constr.constraint_first_row(max_timestamp - timestamp);
+        // Validate max_sign. It's a boolean asserting `next_timestamp > max_timestamp`.
+        let max_diff = local_values[MAX_DIFF];
+        yield_constr.constraint(max_sign * (max_sign - P::ONES));
+        yield_constr.constraint_transition(
+            max_sign * (next_timestamp - (max_timestamp + max_diff))
+                + (max_sign - P::ONES) * (next_timestamp - (max_timestamp - max_diff)),
+        );
+
+        // Validate next_max_ctx_timestamp. If the context has changed, it's
+        // next_timestamp.
+        let max_ctx_timestamp = local_values[MAX_CTX_TIMESTAMP];
+        let next_max_ctx_timestamp = next_values[MAX_CTX_TIMESTAMP];
+        let max_ctx_sign = local_values[MAX_CTX_SIGN];
+        yield_constr.constraint_transition(
+            context_first_change * (next_max_ctx_timestamp - next_timestamp),
+        );
+        // If it hasn't, it's either the previous value or the next timestamp.
+        yield_constr.constraint_transition(
+            not_context_first_change
+                * (max_ctx_sign * (next_max_ctx_timestamp - next_timestamp)
+                    + (max_ctx_sign - P::ONES) * (next_max_ctx_timestamp - max_ctx_timestamp)),
+        );
+        // Initialize with the first timestamp.
+        yield_constr.constraint_first_row(max_ctx_timestamp - timestamp);
+        // Validate max_ctx_sign. It's a boolean asserting `next_timestamp >
+        // max_ctx_timestamp` if the context hasn't changed.
+        let max_ctx_diff = local_values[MAX_CTX_DIFF];
+        yield_constr.constraint(max_ctx_sign * (max_ctx_sign - P::ONES));
+        yield_constr.constraint_transition(
+            not_context_first_change
+                * (max_ctx_sign * (next_timestamp - (max_ctx_timestamp + max_ctx_diff))
+                    + (max_ctx_sign - P::ONES)
+                        * (next_timestamp - (max_ctx_timestamp - max_ctx_diff))),
+        );
+
+        // ctx_flag is binary.
+        let ctx_flag = local_values[CTX_FLAG];
+        yield_constr.constraint(ctx_flag * (ctx_flag - P::ONES));
+        let next_ctx_flag = next_values[CTX_FLAG];
+        // ctx_flag is constant throughout a context.
+        yield_constr.constraint_transition(not_context_first_change * (next_ctx_flag - ctx_flag));
+        // ctx_flag is 1 if its last max_ctx_timestamp matches max_timestamp, 0
+        // otherwise. Remember that at that row, max_ctx_diff contains
+        // either 0 or the inverse of (max_timestamp - max_ctx_timestamp).
+        yield_constr.constraint(
+            context_first_change
+                * (ctx_flag + (max_timestamp - max_ctx_timestamp) * max_ctx_diff - P::ONES),
+        );
+
+        // Validate ctx_filter = ctx_flag * address_changed.
+        let ctx_filter = local_values[CTX_FILTER];
+        yield_constr.constraint(ctx_flag * not_address_unchanged - ctx_filter);
 
         // Check the range column: First value must be 0,
         // and intermediate rows must increment by 1.
@@ -672,6 +813,122 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
             builder.mul_sub_extension(timestamp, timestamp_prod, timestamp);
         yield_constr.constraint(builder, timestamp_inv_constraint);
 
+        // Validate next max_timestamp. It's either the previous value or the next
+        // timestamp.
+        let max_timestamp = local_values[MAX_TIMESTAMP];
+        let next_max_timestamp = next_values[MAX_TIMESTAMP];
+        let max_sign = local_values[MAX_SIGN];
+        {
+            let lhs = builder.sub_extension(next_max_timestamp, next_timestamp);
+            let lhs = builder.mul_extension(max_sign, lhs);
+
+            let rhs = builder.sub_extension(next_max_timestamp, max_timestamp);
+            let rhs = builder.mul_sub_extension(max_sign, rhs, rhs);
+
+            let constr = builder.add_extension(lhs, rhs);
+            yield_constr.constraint_transition(builder, constr);
+        }
+        // Initialize with the first timestamp.
+        {
+            let constr = builder.sub_extension(max_timestamp, timestamp);
+            yield_constr.constraint_first_row(builder, constr);
+        }
+        // Validate max_sign. It's a boolean asserting `next_timestamp > max_timestamp`.
+        let max_diff = local_values[MAX_DIFF];
+        {
+            let constr = builder.mul_sub_extension(max_sign, max_sign, max_sign);
+            yield_constr.constraint(builder, constr);
+        }
+        {
+            let diff = builder.sub_extension(next_timestamp, max_timestamp);
+
+            let lhs = builder.sub_extension(diff, max_diff);
+            let lhs = builder.mul_extension(max_sign, lhs);
+
+            let rhs = builder.add_extension(diff, max_diff);
+            let rhs = builder.mul_sub_extension(max_sign, rhs, rhs);
+
+            let constr = builder.add_extension(lhs, rhs);
+            yield_constr.constraint_transition(builder, constr);
+        }
+
+        // Validate next_max_ctx_timestamp. If the context has changed, it's
+        // next_timestamp.
+        let max_ctx_timestamp = local_values[MAX_CTX_TIMESTAMP];
+        let next_max_ctx_timestamp = next_values[MAX_CTX_TIMESTAMP];
+        let max_ctx_sign = local_values[MAX_CTX_SIGN];
+        let next_diff = builder.sub_extension(next_max_ctx_timestamp, next_timestamp);
+        {
+            let constr = builder.mul_extension(context_first_change, next_diff);
+            yield_constr.constraint_transition(builder, constr);
+        }
+        // If it hasn't, it's either the previous value or the next timestamp.
+        {
+            let lhs = builder.mul_extension(max_ctx_sign, next_diff);
+
+            let rhs = builder.sub_extension(next_max_ctx_timestamp, max_ctx_timestamp);
+            let rhs = builder.mul_sub_extension(max_ctx_sign, rhs, rhs);
+
+            let sum = builder.add_extension(lhs, rhs);
+            let constr = builder.mul_extension(not_context_first_change, sum);
+            yield_constr.constraint_transition(builder, constr);
+        }
+        // Initialize with the first timestamp.
+        {
+            let constr = builder.sub_extension(max_ctx_timestamp, timestamp);
+            yield_constr.constraint_first_row(builder, constr);
+        }
+        // Validate max_ctx_sign. It's a boolean asserting `next_timestamp >
+        // max_ctx_timestamp` if the context hasn't changed.
+        let max_ctx_diff = local_values[MAX_CTX_DIFF];
+        {
+            let constr = builder.mul_sub_extension(max_ctx_sign, max_ctx_sign, max_ctx_sign);
+            yield_constr.constraint(builder, constr);
+        }
+        {
+            let diff = builder.sub_extension(next_timestamp, max_ctx_timestamp);
+
+            let lhs = builder.sub_extension(diff, max_ctx_diff);
+            let lhs = builder.mul_extension(max_ctx_sign, lhs);
+
+            let rhs = builder.add_extension(diff, max_ctx_diff);
+            let rhs = builder.mul_sub_extension(max_ctx_sign, rhs, rhs);
+
+            let sum = builder.add_extension(lhs, rhs);
+            let constr = builder.mul_extension(not_context_first_change, sum);
+            yield_constr.constraint_transition(builder, constr);
+        }
+
+        // ctx_flag is binary.
+        let ctx_flag = local_values[CTX_FLAG];
+        {
+            let constr = builder.mul_sub_extension(ctx_flag, ctx_flag, ctx_flag);
+            yield_constr.constraint(builder, constr);
+        }
+        let next_ctx_flag = next_values[CTX_FLAG];
+        let flag_diff = builder.sub_extension(next_ctx_flag, ctx_flag);
+        // ctx_flag is constant throughout a context.
+        {
+            let constr = builder.mul_extension(not_context_first_change, flag_diff);
+            yield_constr.constraint_transition(builder, constr);
+        }
+        // ctx_flag is 1 if its last max_ctx_timestamp matches max_timestamp, 0
+        // otherwise. Remember that at that row, max_ctx_diff contains
+        // either 0 or the inverse of (max_timestamp - max_ctx_timestamp).
+        {
+            let diff = builder.sub_extension(max_timestamp, max_ctx_timestamp);
+            let sum = builder.mul_add_extension(diff, max_ctx_diff, ctx_flag);
+            let constr = builder.mul_sub_extension(context_first_change, sum, context_first_change);
+            yield_constr.constraint(builder, constr);
+        }
+
+        // Validate ctx_filter = ctx_flag * address_changed.
+        let ctx_filter = local_values[CTX_FILTER];
+        {
+            let constr = builder.mul_sub_extension(ctx_flag, not_address_unchanged, ctx_filter);
+            yield_constr.constraint(builder, constr);
+        }
+
         // Check the range column: First value must be 0,
         // and intermediate rows must increment by 1.
         let rc1 = local_values[COUNTER];
@@ -690,12 +947,21 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
         vec![Lookup {
             columns: vec![
                 Column::single(RANGE_CHECK),
+                Column::single(MAX_DIFF),
+                Column::single(MAX_CTX_DIFF),
                 Column::single_next_row(ADDR_VIRTUAL),
             ],
             table_column: Column::single(COUNTER),
             frequencies_column: Column::single(FREQUENCIES),
             filter_columns: vec![
                 None,
+                None,
+                Some(Filter::new_simple(
+                    Column::linear_combination_with_constant(
+                        [(CONTEXT_FIRST_CHANGE, -F::ONE)],
+                        F::ONE,
+                    ),
+                )),
                 Some(Filter::new_simple(Column::sum([
                     CONTEXT_FIRST_CHANGE,
                     SEGMENT_FIRST_CHANGE,

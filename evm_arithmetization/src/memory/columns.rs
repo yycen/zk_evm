@@ -3,23 +3,32 @@
 use crate::memory::VALUE_LIMBS;
 
 // Columns for memory operations, ordered by (addr, timestamp).
-/// 1 if this is an actual memory operation, or 0 if it's a padding row.
+// 1 if this is an actual memory operation, or 0 if it's a padding row.
 pub(crate) const FILTER: usize = 0;
-/// Each memory operation is associated to a unique timestamp.
-/// For a given memory operation `op_i`, its timestamp is computed as `C * N +
-/// i` where `C` is the CPU clock at that time, `N` is the number of general
-/// memory channels, and `i` is the index of the memory channel at which the
-/// memory operation is performed.
+// Each memory operation is associated to a unique timestamp.
+// For a given memory operation `op_i`, its timestamp is computed as `C * N +
+// i` where `C` is the CPU clock at that time, `N` is the number of general
+// memory channels, and `i` is the index of the memory channel at which the
+// memory operation is performed.
 pub(crate) const TIMESTAMP: usize = FILTER + 1;
-/// Contains the inverse of `TIMESTAMP`. Used to check if `TIMESTAMP = 0`.
+// Contains the inverse of `TIMESTAMP`. Used to check if `TIMESTAMP = 0`.
 pub(crate) const TIMESTAMP_INV: usize = TIMESTAMP + 1;
-/// 1 if this is a read operation, 0 if it is a write one.
-pub(crate) const IS_READ: usize = TIMESTAMP_INV + 1;
-/// The execution context of this address.
+// Contains the maximum timestamp reached up to the current row.
+pub(crate) const MAX_TIMESTAMP: usize = TIMESTAMP_INV + 1;
+pub(crate) const MAX_SIGN: usize = MAX_TIMESTAMP + 1;
+pub(crate) const MAX_DIFF: usize = MAX_SIGN + 1;
+// Contains the maximum timestamp reached in the current context, up to the
+// current row.
+pub(crate) const MAX_CTX_TIMESTAMP: usize = MAX_DIFF + 1;
+pub(crate) const MAX_CTX_SIGN: usize = MAX_CTX_TIMESTAMP + 1;
+pub(crate) const MAX_CTX_DIFF: usize = MAX_CTX_SIGN + 1;
+// 1 if this is a read operation, 0 if it is a write one.
+pub(crate) const IS_READ: usize = MAX_CTX_DIFF + 1;
+// The execution context of this address.
 pub(crate) const ADDR_CONTEXT: usize = IS_READ + 1;
-/// The segment section of this address.
+// The segment section of this address.
 pub(crate) const ADDR_SEGMENT: usize = ADDR_CONTEXT + 1;
-/// The virtual address within the given context and segment.
+// The virtual address within the given context and segment.
 pub(crate) const ADDR_VIRTUAL: usize = ADDR_SEGMENT + 1;
 
 // Eight 32-bit limbs hold a total of 256 bits.
@@ -42,8 +51,16 @@ pub(crate) const VIRTUAL_FIRST_CHANGE: usize = SEGMENT_FIRST_CHANGE + 1;
 // Contains `next_segment * addr_changed * next_is_read`.
 pub(crate) const INITIALIZE_AUX: usize = VIRTUAL_FIRST_CHANGE + 1;
 
-// We use a range check to enforce the ordering.
-pub(crate) const RANGE_CHECK: usize = INITIALIZE_AUX + 1;
+// Used for context pruning. Determines if a context is propagated in
+// `MemAfter`.
+pub(crate) const CTX_FLAG: usize = INITIALIZE_AUX + 1;
+
+// Used to lower the degree of the `MemAfter` CTL filter.
+// Contains `ctx_flag * address_changed`.
+pub(crate) const CTX_FILTER: usize = CTX_FLAG + 1;
+
+// We use a range checks to enforce ordering.
+pub(crate) const RANGE_CHECK: usize = CTX_FILTER + 1;
 /// The counter column (used for the range check) starts from 0 and increments.
 pub(crate) const COUNTER: usize = RANGE_CHECK + 1;
 /// The frequencies column used in logUp.
