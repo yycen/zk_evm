@@ -5,7 +5,7 @@
 //! included in the produced subset. Any nodes that are not needed in the subset
 //! are replaced with [`Hash`] nodes are far up the trie as possible.
 
-use std::{borrow::Borrow, sync::Arc};
+use std::sync::Arc;
 
 use ethereum_types::H256;
 use log::trace;
@@ -57,8 +57,11 @@ impl<N: PartialTrie> From<&TrackedNode<N>> for TrieNodeType {
 }
 
 impl<N: PartialTrie> TrackedNode<N> {
-    fn node_is_leaf(&self) -> bool {
-        matches!(self.node, TrackedNodeIntern::Leaf)
+    fn node_is_leaf_or_branch(&self) -> bool {
+        matches!(
+            self.node,
+            TrackedNodeIntern::Leaf | TrackedNodeIntern::Branch(_)
+        )
     }
 }
 
@@ -306,7 +309,7 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
                 return Err(SubsetTrieError::UnexpectedKey(
                     *curr_nibbles,
                     format!("{:?}", trie),
-                ))
+                ));
                 // trie.info.touched = true;
             }
             true => {
@@ -329,11 +332,13 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             let nibbles = trie.info.get_nibbles_expected();
             let r = curr_nibbles.pop_nibbles_front(nibbles.count);
 
-            // Plonky2 requires that an extension pointing to a leaf is always unhashed if
-            // the parent is also unhashed.
+            // Plonky2 requires that an extension pointing to a leaf or branch is always
+            // unhashed if the parent is also unhashed.
 
             println!("Child type: {}", TrieNodeType::from(child.as_ref()));
-            if r.nibbles_are_identical_up_to_smallest_count(nibbles) || child.node_is_leaf() {
+            if r.nibbles_are_identical_up_to_smallest_count(nibbles)
+                || child.node_is_leaf_or_branch()
+            {
                 trie.info.touched = true;
                 return mark_nodes_that_are_needed(child, curr_nibbles);
             }
