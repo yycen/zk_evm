@@ -879,6 +879,27 @@ mod tests {
     }
 
     #[test]
+    fn cloning_a_trie_creates_two_separate_tries() {
+        common_setup();
+
+        assert_cloning_works_for_tries::<StandardTrie>();
+        assert_cloning_works_for_tries::<HashedPartialTrie>();
+    }
+
+    fn assert_cloning_works_for_tries<T>()
+    where
+        T: FromIterator<(Nibbles, Vec<u8>)> + PartialTrie,
+    {
+        let trie = T::from_iter(once(entry(0x1234)));
+        let mut cloned_trie = trie.clone();
+
+        cloned_trie.extend(once(entry(0x5678)));
+
+        assert_ne!(trie, cloned_trie);
+        assert_ne!(trie.hash(), cloned_trie.hash());
+    }
+
+    #[test]
     fn mass_inserts_fixed_sized_keys_all_entries_are_retrievable() {
         common_setup();
         let entries: Vec<_> =
