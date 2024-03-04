@@ -63,6 +63,18 @@ impl<N: Clone + PartialTrie> TrackedNode<N> {
     }
 }
 
+impl<N: PartialTrie> From<&TrackedNode<N>> for TrieNodeType {
+    fn from(v: &TrackedNode<N>) -> Self {
+        match &v.node {
+            TrackedNodeIntern::Empty => TrieNodeType::Empty,
+            TrackedNodeIntern::Hash => TrieNodeType::Hash,
+            TrackedNodeIntern::Branch(_) => TrieNodeType::Branch,
+            TrackedNodeIntern::Extension(_) => TrieNodeType::Extension,
+            TrackedNodeIntern::Leaf => TrieNodeType::Leaf,
+        }
+    }
+}
+
 fn tracked_branch<N: PartialTrie>(
     underlying_children: &[WrappedNode<N>; 16],
 ) -> [TrackedNode<N>; 16] {
@@ -288,7 +300,7 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
                 return Err(SubsetTrieError::UnexpectedKey(
                     *curr_nibbles,
                     format!("{:?}", trie),
-                ))
+                ));
                 // trie.info.touched = true;
             }
             true => {
@@ -311,6 +323,7 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             let nibbles = trie.info.get_nibbles_expected();
             let r = curr_nibbles.pop_nibbles_front(nibbles.count);
 
+            println!("Child type: {}", TrieNodeType::from(child.as_ref()));
             if r.nibbles_are_identical_up_to_smallest_count(nibbles) {
                 trie.info.touched = true;
                 return mark_nodes_that_are_needed(child, curr_nibbles);
