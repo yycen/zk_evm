@@ -310,7 +310,6 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
                     *curr_nibbles,
                     format!("{:?}", trie),
                 ));
-                // trie.info.touched = true;
             }
             true => {
                 trie.info.touched = true;
@@ -329,19 +328,16 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             return mark_nodes_that_are_needed(&mut children[nib as usize], curr_nibbles);
         }
         TrackedNodeIntern::Extension(child) => {
-            let nibbles = trie.info.get_nibbles_expected();
-            let r = curr_nibbles.pop_nibbles_front(nibbles.count);
-
-            // Plonky2 requires that an extension pointing to a leaf or branch is always
-            // unhashed if the parent is also unhashed.
-
-            println!("Child type: {}", TrieNodeType::from(child.as_ref()));
-            if r.nibbles_are_identical_up_to_smallest_count(nibbles)
-                || child.node_is_leaf_or_branch()
-            {
-                trie.info.touched = true;
-                return mark_nodes_that_are_needed(child, curr_nibbles);
+            // If we hit an extension node, we always must include it unless we exhausted our key.
+            if curr_nibbles.is_empty() {
+                return Ok(());
             }
+
+            let nibbles = trie.info.get_nibbles_expected();
+            pop_nibbles_front_clamped(curr_nibbles, nibbles.count);
+
+            trie.info.touched = true;
+            return mark_nodes_that_are_needed(child, curr_nibbles);
         }
         TrackedNodeIntern::Leaf => {
             // Plonky2 requires that a leaf is always unhashed if the parent is also
@@ -408,6 +404,11 @@ fn reset_tracked_trie_state<N: PartialTrie>(tracked_node: &mut TrackedNode<N>) {
             tracked_node.info.reset()
         }
     }
+}
+
+fn pop_nibbles_front_clamped(nibbles: &mut Nibbles, n: usize) {
+    let n_to_pop = n.min(nibbles.count);
+    nibbles.pop_nibbles_front(n_to_pop);
 }
 
 #[cfg(test)]
