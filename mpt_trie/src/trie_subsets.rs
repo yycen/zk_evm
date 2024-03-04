@@ -334,11 +334,15 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
                 return Ok(());
             }
 
-            let nibbles = trie.info.get_nibbles_expected();
-            pop_nibbles_front_clamped(curr_nibbles, nibbles.count);
-
             trie.info.touched = true;
-            return mark_nodes_that_are_needed(child, curr_nibbles);
+
+            let nibbles: &Nibbles = trie.info.get_nibbles_expected();
+            if curr_nibbles.nibbles_are_identical_up_to_smallest_count(nibbles) {
+                curr_nibbles.pop_nibbles_front(nibbles.count);
+                return mark_nodes_that_are_needed(child, curr_nibbles);
+            }
+
+            return Ok(());
         }
         TrackedNodeIntern::Leaf => {
             // Plonky2 requires that a leaf is always unhashed if the parent is also
