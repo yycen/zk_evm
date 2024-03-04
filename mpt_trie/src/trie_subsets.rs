@@ -328,7 +328,8 @@ fn mark_nodes_that_are_needed<N: PartialTrie>(
             return mark_nodes_that_are_needed(&mut children[nib as usize], curr_nibbles);
         }
         TrackedNodeIntern::Extension(child) => {
-            // If we hit an extension node, we always must include it unless we exhausted our key.
+            // If we hit an extension node, we always must include it unless we exhausted
+            // our key.
             if curr_nibbles.is_empty() {
                 return Ok(());
             }

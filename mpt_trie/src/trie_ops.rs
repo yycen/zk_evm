@@ -770,13 +770,14 @@ fn create_node_if_ins_val_not_hash<N, F: FnOnce(Vec<u8>) -> WrappedNode<N>>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, iter::once};
 
     use log::debug;
 
     use super::ValOrHash;
     use crate::{
-        partial_trie::{Node, PartialTrie, StandardTrie},
+        nibbles::Nibbles,
+        partial_trie::{HashedPartialTrie, Node, PartialTrie, StandardTrie},
         testing_utils::{
             common_setup, entry, entry_with_value,
             generate_n_hash_nodes_entries_for_empty_slots_in_trie,

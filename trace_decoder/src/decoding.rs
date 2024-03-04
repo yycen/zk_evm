@@ -327,6 +327,8 @@ impl ProcessedBlockTrace {
                         }
                     }
                 };
+
+                storage_trie.get(slot);
             }
         }
 
