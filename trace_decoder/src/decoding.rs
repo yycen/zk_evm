@@ -166,6 +166,10 @@ impl ProcessedBlockTrace {
                 )?;
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
+                
+                println!("Trie roots before: state: {:x}, txn: {:x}, receipt: {:x}", tries.state_trie.hash(), tries.transactions_trie.hash(), tries.receipts_trie.hash());
+                println!("Trie roots after: {:#?}", trie_roots_after);
+                
                 let gen_inputs = GenerationInputs {
                     txn_number_before: extra_data.txn_number_before,
                     gas_used_before: extra_data.gas_used_before,
@@ -228,7 +232,7 @@ impl ProcessedBlockTrace {
             .insert(txn_k, meta.receipt_node_bytes.as_ref());
     }
 
-    /// SomeIf the account does not have a storage trie or does but is not
+    /// If the account does not have a storage trie or does but is not
     /// accessed by any txns, then we still need to manually create an entry for
     /// them.
     fn init_any_needed_empty_storage_tries<'a>(
@@ -804,16 +808,8 @@ fn create_trie_subset_wrapped(
         .map_err(|_| TraceParsingError::MissingKeysCreatingSubPartialTrie(trie_type));
 
     println!("Asserting trie {:x}...", trie.hash());
-    if let Ok(t) = &res {
-        for acc in accesses {
-            println!("Checking {:x}...", acc);
-
-            let p: TriePath = path_for_query(t, acc).collect();
-
-            // if let Some(n) = p.0.last() {
-            //     assert_ne!(*n, TrieSegment::Hash);
-            // }
-        }
+    if let Ok(sub_trie) = &res {
+        assert_eq!(trie.hash(), sub_trie.hash());
     }
 
     res
