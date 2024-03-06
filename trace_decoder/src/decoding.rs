@@ -31,33 +31,45 @@ use crate::{
     utils::{hash, update_val_if_some},
 };
 
+/// Stores the result of parsing tries. Returns a [TraceParsingError] upon
+/// failure.
 pub type TraceParsingResult<T> = Result<T, TraceParsingError>;
 
+/// An error type for trie parsing.
 #[derive(Debug, Error)]
 pub enum TraceParsingError {
+    /// Failure to decode an Ethereum [Account].
     #[error("Failed to decode RLP bytes ({0}) as an Ethereum account due to the error: {1}")]
     AccountDecode(String, String),
 
+    /// Failure due to trying to access or delete a storage trie missing
+    /// from the base trie.
     #[error("Missing account storage trie in base trie when constructing subset partial trie for txn (account: {0:x})")]
     MissingAccountStorageTrie(HashedAccountAddr),
 
-    #[error("Tried accessing a non-existent key ({1:x}) in the {0} trie (root hash: {2:x})")]
+    /// Failure due to trying to access a non-existent key in the trie.
+    #[error("Tried accessing a non-existent key ({1}) in the {0} trie (root hash: {2:x})")]
     NonExistentTrieEntry(TrieType, Nibbles, TrieRootHash),
 
-    // TODO: Figure out how to make this error useful/meaningful... For now this is just a
-    // placeholder.
+    /// Failure due to missing keys when creating a subpartial trie.
     #[error("Missing keys when creating sub-partial tries (Trie type: {0})")]
     MissingKeysCreatingSubPartialTrie(TrieType),
 
+    /// Failure due to trying to withdraw from a missing account
     #[error("No account present at {0:x} (hashed: {1:x}) to withdraw {2} Gwei from!")]
     MissingWithdrawalAccount(Address, HashedAccountAddr, U256),
 }
 
+/// An enum to cover all Ethereum trie types (see https://ethereum.github.io/yellowpaper/paper.pdf for details).
 #[derive(Debug)]
 pub enum TrieType {
+    /// State trie.
     State,
+    /// Storage trie.
     Storage,
+    /// Receipt trie.
     Receipt,
+    /// Transaction trie.
     Txn,
 }
 
@@ -166,10 +178,15 @@ impl ProcessedBlockTrace {
                 )?;
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
-                
-                println!("Trie roots before: state: {:x}, txn: {:x}, receipt: {:x}", tries.state_trie.hash(), tries.transactions_trie.hash(), tries.receipts_trie.hash());
+
+                println!(
+                    "Trie roots before: state: {:x}, txn: {:x}, receipt: {:x}",
+                    tries.state_trie.hash(),
+                    tries.transactions_trie.hash(),
+                    tries.receipts_trie.hash()
+                );
                 println!("Trie roots after: {:#?}", trie_roots_after);
-                
+
                 let gen_inputs = GenerationInputs {
                     txn_number_before: extra_data.txn_number_before,
                     gas_used_before: extra_data.gas_used_before,
