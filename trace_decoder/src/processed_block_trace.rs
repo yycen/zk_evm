@@ -260,7 +260,10 @@ impl TxnInfo {
             nodes_used_by_txn.storage_accesses.push((
                 hashed_addr,
                 storage_access_keys
-                    .map(|k| { println!("s_slot {:x} --> {:x}", k, hash(&k.0)); Nibbles::from_h256_be(hash(&k.0)) })
+                    .map(|k| {
+                        println!("s_slot {:x} --> {:x}", k, hash(&k.0));
+                        Nibbles::from_h256_be(hash(&k.0))
+                    })
                     .collect(),
             ));
 

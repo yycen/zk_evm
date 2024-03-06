@@ -1,5 +1,9 @@
 use std::{
-    collections::HashMap, fmt::{self, Display, Formatter}, fs, iter::{self, empty, once}, str::FromStr
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+    fs,
+    iter::{self, empty, once},
+    str::FromStr,
 };
 
 use ethereum_types::{Address, H256, U256};
@@ -21,9 +25,7 @@ use thiserror::Error;
 use crate::{
     processed_block_trace::{NodesUsedByTxn, ProcessedBlockTrace, StateTrieWrites, TxnMetaState},
     types::{
-        HashedAccountAddr, HashedNodeAddr, HashedStorageAddr, HashedStorageAddrNibbles,
-        OtherBlockData, TriePathIter, TrieRootHash, TxnIdx, TxnProofGenIR,
-        EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED,
+        BlockHeight, HashedAccountAddr, HashedNodeAddr, HashedStorageAddr, HashedStorageAddrNibbles, OtherBlockData, TriePathIter, TrieRootHash, TxnIdx, TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED
     },
     utils::{hash, update_val_if_some},
 };
@@ -92,7 +94,7 @@ struct PartialTrieState {
 }
 
 /// Additional information discovered during delta application.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct TrieDeltaApplicationOutput {
     // During delta application, if a delete occurs, we may have to make sure additional nodes
     // remain unhashed that are not accessed by the txn.
@@ -129,8 +131,12 @@ impl ProcessedBlockTrace {
         // A copy of the initial extra_data possibly needed during padding.
         let extra_data_for_dummies = extra_data.clone();
 
-        fs::create_dir_all(format!("txn_traces/{}/", other_data.b_data.b_meta.block_number)).unwrap();
-        
+        fs::create_dir_all(format!(
+            "txn_traces/{}/",
+            other_data.b_data.b_meta.block_number
+        ))
+        .unwrap();
+
         let mut txn_gen_inputs = self
             .txn_info
             .into_iter()
@@ -172,22 +178,38 @@ impl ProcessedBlockTrace {
                     &tries_at_start_of_txn,
                     &txn_info.nodes_used_by_txn,
                     txn_idx,
+                    delta_out.clone(),
+                    &other_data.b_data.b_meta.block_beneficiary,
+                )?;
+
+                let tries_post = Self::create_minimal_partial_tries_needed_by_txn(
+                    &curr_block_tries,
+                    &txn_info.nodes_used_by_txn,
+                    txn_idx,
                     delta_out,
                     &other_data.b_data.b_meta.block_beneficiary,
                 )?;
 
-                fs::write(format!("txn_traces/{}/state_trie_post_full_b{}_t{}.json", other_data.b_data.b_meta.block_number, other_data.b_data.b_meta.block_number, txn_idx), serde_json::to_string_pretty(&curr_block_tries.state).unwrap());
-                fs::write(format!("txn_traces/{}/state_trie_post_partial_b{}_t{}.json", other_data.b_data.b_meta.block_number, other_data.b_data.b_meta.block_number, txn_idx), serde_json::to_string_pretty(&tries.state_trie).unwrap());
+                println!("STATE TRIE POST {}!!", txn_idx);
+                let accounts = tries_post.state_trie.items().filter_map(|(k, v)| v.as_val().map(|v| (k, v.clone()))).map(|(k, v)| format!("Account {:x}: {:x}", k, account_from_rlped_bytes(&v).unwrap().storage_root)).collect::<Vec<_>>();
+                println!("{:#?}", accounts);
+
+                // Self::write_tries_to_disk(&tries.state_trie, tries.storage_tries.iter().cloned(), "pre", "partial", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
+                // Self::write_tries_to_disk(&initial_tries_for_dummies.state, initial_tries_for_dummies.storage.iter().map(|(k ,v)| (*k, v.clone())), "pre", "full", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
+
+                // Self::write_tries_to_disk(&tries_post.state_trie, tries_post.storage_tries.iter().cloned(), "post", "partial", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
+                // Self::write_tries_to_disk(&curr_block_tries.state, curr_block_tries.storage.iter().map(|(k, v)| (*k, v.clone())), "post", "full", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
 
                 println!(
-                    "Trie roots before: state: {:x}, txn: {:x}, receipt: {:x}",
+                    "Trie roots before: state: ({}) {:x}, txn: {:x}, receipt: {:x}",
+                    txn_idx,
                     tries.state_trie.hash(),
                     tries.transactions_trie.hash(),
                     tries.receipts_trie.hash()
                 );
-                println!("Trie roots after: {:#?}", trie_roots_after);
+                println!("Trie roots after: ({}) {:#?}", txn_idx, trie_roots_after);
 
                 let gen_inputs = GenerationInputs {
                     txn_number_before: extra_data.txn_number_before,
@@ -249,6 +271,35 @@ impl ProcessedBlockTrace {
         trie_state
             .receipt
             .insert(txn_k, meta.receipt_node_bytes.as_ref());
+    }
+
+    fn write_tries_to_disk<'a>(state_trie: &'a HashedPartialTrie, storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>, pre_post_prefix: &'static str, full_partial_prefix: &'static str, block_num: BlockHeight, txn_idx: TxnIdx) {
+        fs::write(
+            format!(
+                "txn_traces/{}/state_trie_{}_{}_b{}_t{}.json",
+                block_num,
+                pre_post_prefix,
+                full_partial_prefix,
+                block_num,
+                txn_idx
+            ),
+            serde_json::to_string_pretty(&state_trie).unwrap(),
+        );
+
+        for (addr, s_trie) in storage_tries {
+            let path = format!("txn_traces/{}/{:x}/storage_trie_{}_{}_b{}_t{}.json",
+                block_num,
+                addr,
+                pre_post_prefix,
+                full_partial_prefix,
+                block_num,
+                txn_idx,
+            );
+
+            fs::create_dir_all(format!("txn_traces/{}/{:x}", block_num, addr)).unwrap();
+            fs::write(path, serde_json::to_string(&s_trie).unwrap()).unwrap();
+        }
+
     }
 
     /// If the account does not have a storage trie or does but is not

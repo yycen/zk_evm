@@ -214,7 +214,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 
     std::fs::write(
         format!("txn_{:?}_before_state_trie.json", inputs.txn_number_before),
-        &serde_json::to_string(&inputs.tries.state_trie).unwrap(),
+        serde_json::to_string(&inputs.tries.state_trie).unwrap()
     )
     .unwrap();
 
@@ -259,7 +259,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
                 get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr).unwrap();
             std::fs::write(
                 format!("txn_{:?}_after_state_trie.json", inputs.txn_number_before),
-                &serde_json::to_string(&state_trie).unwrap(),
+                serde_json::to_string(&state_trie).unwrap(),
             )
             .unwrap();
             log::debug!("Computed state trie: {:?}", state_trie);
