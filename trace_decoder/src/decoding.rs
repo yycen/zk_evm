@@ -1,8 +1,5 @@
 use std::{
-    collections::HashMap,
-    fmt::{self, Display, Formatter},
-    iter::{self, empty, once},
-    str::FromStr,
+    collections::HashMap, fmt::{self, Display, Formatter}, fs, iter::{self, empty, once}, str::FromStr
 };
 
 use ethereum_types::{Address, H256, U256};
@@ -132,6 +129,8 @@ impl ProcessedBlockTrace {
         // A copy of the initial extra_data possibly needed during padding.
         let extra_data_for_dummies = extra_data.clone();
 
+        fs::create_dir_all(format!("txn_traces/{}/", other_data.b_data.b_meta.block_number)).unwrap();
+        
         let mut txn_gen_inputs = self
             .txn_info
             .into_iter()
@@ -176,6 +175,9 @@ impl ProcessedBlockTrace {
                     delta_out,
                     &other_data.b_data.b_meta.block_beneficiary,
                 )?;
+
+                fs::write(format!("txn_traces/{}/state_trie_post_full_b{}_t{}.json", other_data.b_data.b_meta.block_number, other_data.b_data.b_meta.block_number, txn_idx), serde_json::to_string_pretty(&curr_block_tries.state).unwrap());
+                fs::write(format!("txn_traces/{}/state_trie_post_partial_b{}_t{}.json", other_data.b_data.b_meta.block_number, other_data.b_data.b_meta.block_number, txn_idx), serde_json::to_string_pretty(&tries.state_trie).unwrap());
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
 
