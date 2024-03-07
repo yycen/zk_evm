@@ -25,7 +25,9 @@ use thiserror::Error;
 use crate::{
     processed_block_trace::{NodesUsedByTxn, ProcessedBlockTrace, StateTrieWrites, TxnMetaState},
     types::{
-        BlockHeight, HashedAccountAddr, HashedNodeAddr, HashedStorageAddr, HashedStorageAddrNibbles, OtherBlockData, TriePathIter, TrieRootHash, TxnIdx, TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED
+        BlockHeight, HashedAccountAddr, HashedNodeAddr, HashedStorageAddr,
+        HashedStorageAddrNibbles, OtherBlockData, TriePathIter, TrieRootHash, TxnIdx,
+        TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED,
     },
     utils::{hash, update_val_if_some},
 };
@@ -191,14 +193,59 @@ impl ProcessedBlockTrace {
                 )?;
 
                 println!("STATE TRIE POST {}!!", txn_idx);
-                let accounts = tries_post.state_trie.items().filter_map(|(k, v)| v.as_val().map(|v| (k, v.clone()))).map(|(k, v)| format!("Account {:x}: {:x}", k, account_from_rlped_bytes(&v).unwrap().storage_root)).collect::<Vec<_>>();
+                let accounts = tries_post
+                    .state_trie
+                    .items()
+                    .filter_map(|(k, v)| v.as_val().map(|v| (k, v.clone())))
+                    .map(|(k, v)| {
+                        format!(
+                            "Account {:x}: {:x}",
+                            k,
+                            account_from_rlped_bytes(&v).unwrap().storage_root
+                        )
+                    })
+                    .collect::<Vec<_>>();
                 println!("{:#?}", accounts);
 
-                // Self::write_tries_to_disk(&tries.state_trie, tries.storage_tries.iter().cloned(), "pre", "partial", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
-                // Self::write_tries_to_disk(&initial_tries_for_dummies.state, initial_tries_for_dummies.storage.iter().map(|(k ,v)| (*k, v.clone())), "pre", "full", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
+                Self::write_tries_to_disk(
+                    &tries.state_trie,
+                    tries.storage_tries.iter().cloned(),
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_tries_to_disk(
+                    &initial_tries_for_dummies.state,
+                    initial_tries_for_dummies
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
 
-                // Self::write_tries_to_disk(&tries_post.state_trie, tries_post.storage_tries.iter().cloned(), "post", "partial", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
-                // Self::write_tries_to_disk(&curr_block_tries.state, curr_block_tries.storage.iter().map(|(k, v)| (*k, v.clone())), "post", "full", other_data.b_data.b_meta.block_number.as_u64(), txn_idx);
+                Self::write_tries_to_disk(
+                    &tries_post.state_trie,
+                    tries_post.storage_tries.iter().cloned(),
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_tries_to_disk(
+                    &curr_block_tries.state,
+                    curr_block_tries
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
 
@@ -273,27 +320,26 @@ impl ProcessedBlockTrace {
             .insert(txn_k, meta.receipt_node_bytes.as_ref());
     }
 
-    fn write_tries_to_disk<'a>(state_trie: &'a HashedPartialTrie, storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>, pre_post_prefix: &'static str, full_partial_prefix: &'static str, block_num: BlockHeight, txn_idx: TxnIdx) {
+    fn write_tries_to_disk<'a>(
+        state_trie: &'a HashedPartialTrie,
+        storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>,
+        pre_post_prefix: &'static str,
+        full_partial_prefix: &'static str,
+        block_num: BlockHeight,
+        txn_idx: TxnIdx,
+    ) {
         fs::write(
             format!(
                 "txn_traces/{}/state_trie_{}_{}_b{}_t{}.json",
-                block_num,
-                pre_post_prefix,
-                full_partial_prefix,
-                block_num,
-                txn_idx
+                block_num, pre_post_prefix, full_partial_prefix, block_num, txn_idx
             ),
             serde_json::to_string_pretty(&state_trie).unwrap(),
         );
 
         for (addr, s_trie) in storage_tries {
-            let path = format!("txn_traces/{}/{:x}/storage_trie_{}_{}_b{}_t{}.json",
-                block_num,
-                addr,
-                pre_post_prefix,
-                full_partial_prefix,
-                block_num,
-                txn_idx,
+            let path = format!(
+                "txn_traces/{}/{:x}/storage_trie_{}_{}_b{}_t{}.json",
+                block_num, addr, pre_post_prefix, full_partial_prefix, block_num, txn_idx,
             );
 
             fs::create_dir_all(format!("txn_traces/{}/{:x}", block_num, addr)).unwrap();
