@@ -320,8 +320,8 @@ impl ProcessedBlockTrace {
             .insert(txn_k, meta.receipt_node_bytes.as_ref());
     }
 
-    fn write_tries_to_disk<'a>(
-        state_trie: &'a HashedPartialTrie,
+    fn write_tries_to_disk(
+        state_trie: &HashedPartialTrie,
         storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>,
         pre_post_prefix: &'static str,
         full_partial_prefix: &'static str,
@@ -345,7 +345,6 @@ impl ProcessedBlockTrace {
             fs::create_dir_all(format!("txn_traces/{}/{:x}", block_num, addr)).unwrap();
             fs::write(path, serde_json::to_string(&s_trie).unwrap()).unwrap();
         }
-
     }
 
     /// If the account does not have a storage trie or does but is not
@@ -512,7 +511,14 @@ impl ProcessedBlockTrace {
         trie.delete(*delete_k);
         let new_trace = Self::get_trie_trace(trie, delete_k);
 
-        Self::node_deletion_resulted_in_a_branch_collapse(&old_trace, &new_trace)
+        let res = Self::node_deletion_resulted_in_a_branch_collapse(&old_trace, &new_trace);
+
+        println!(
+            "Checked node collapse for {:x} (collapsed: {})...",
+            delete_k, res
+        );
+
+        res
     }
 
     /// Comparing the path of the deleted key before and after the deletion,
@@ -527,26 +533,54 @@ impl ProcessedBlockTrace {
             return false;
         }
 
-        // Node we need to check is the last node in the new path.
-        let seg_idx = new_path.0.len() - 1;
-        let old_seg_at_idx = &old_path.0[seg_idx];
+        println!("Old path: {:#?}", old_path);
+        println!("New path: {:#?}", new_path);
 
-        // The last node needs to be a branch in order for a collapse to occur.
-        if !matches!(old_seg_at_idx, TrieSegment::Branch(_)) {
-            return false;
-        }
+        // If a collapse occurred, then this means that the node above the leaf has changed type. However, there are only two possibilities:
+        // - The parent node became an extension.
+        // - The parent node got merged into the remaining leaf below.
+        // 
+        // It's important to note that in both of the two above scenarios, the new path will be
 
-        let new_seg_at_idx = &new_path.0[seg_idx];
+        // Node that may have changed type is one above the node that was deleted. Note
+        // that this function assumes that the delete always succeeds (which the
+        // two call sites to this function always guarantee). Because
+        // of this, the new path is always going to be missing the final node (because
+        // it got deleted).
+        let seg_idx = old_path.0.len() - 2;
 
-        if old_seg_at_idx.node_type() == new_seg_at_idx.node_type() {
-            return false;
-        }
+        // If the segment that we need to check in the new path is out of range, then there was a branch collapse.
+        seg_idx >= new_path.0.len()
+
+        // let old_seg_at_idx = &old_path.0[seg_idx];
+
+        // println!("Seg idx: {}", seg_idx);
+        // println!("Old seg: {}", old_seg_at_idx);
+        // println!("New seg: {}", &new_path.0[seg_idx]);
+
+        // // The seg index of the last seg in the new path must be a branch in the old
+        // // path in the new trace in order for a collapse to occur.
+        // if !matches!(old_seg_at_idx, TrieSegment::Branch(_)) {
+        //     return false;
+        // }
+
+        // println!("Past old branch check!");
+
+        // let new_seg_at_idx = &new_path.0[seg_idx];
+
+        // // If there was a branch collapse, then the node that was a branch must have
+        // // changed type.
+        // if old_seg_at_idx.node_type() == new_seg_at_idx.node_type() {
+        //     return false;
+        // }
+
+        // println!("Past node type change check!");
 
         // Additional sanity check as this should be the only valid node type after a
         // collapse.
-        assert!(matches!(new_seg_at_idx, TrieSegment::Leaf(_)));
+        // assert!(matches!(new_seg_at_idx, TrieSegment::Leaf(_)));
 
-        true
+        // true
     }
 
     /// Pads a generated IR vec with additional "dummy" entries if needed.
@@ -887,7 +921,9 @@ fn create_minimal_storage_partial_tries<'a>(
                     .get(h_addr)
                     .into_iter()
                     .flat_map(|slots| slots.iter().cloned()),
-            );
+            ).collect::<Vec<_>>();
+
+            println!("Storage slots to avoid hashing for {}: {:#?}", h_addr, storage_slots_to_not_hash);
 
             println!(
                 "{:#?}",
@@ -905,7 +941,7 @@ fn create_minimal_storage_partial_tries<'a>(
 
             let partial_storage_trie = create_trie_subset_wrapped(
                 base_storage_trie,
-                storage_slots_to_not_hash,
+                storage_slots_to_not_hash.into_iter(),
                 TrieType::Storage,
             )?;
             Ok((*h_addr, partial_storage_trie))
