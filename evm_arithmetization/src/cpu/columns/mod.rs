@@ -87,6 +87,9 @@ pub(crate) struct CpuColumnsView<T: Copy> {
     /// CPU clock.
     pub(crate) clock: T,
 
+    /// HAMY: test
+    pub context_pruning: T,
+
     /// Memory bus channels in the CPU.
     /// Full channels are comprised of 13 columns.
     pub mem_channels: [MemoryChannelView<T>; NUM_GP_CHANNELS],

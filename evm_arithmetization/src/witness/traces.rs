@@ -124,6 +124,7 @@ impl<T: Copy> Traces<T> {
         self,
         all_stark: &AllStark<T, D>,
         mem_before_values: &MemBeforeValues,
+        pruned_contexts: Vec<usize>,
         config: &StarkConfig,
         timing: &mut TimingTree,
     ) -> ([Vec<PolynomialValues<T>>; NUM_TABLES], Vec<Vec<T>>)
@@ -179,9 +180,12 @@ impl<T: Copy> Traces<T> {
         let (memory_trace, final_values) = timed!(
             timing,
             "generate memory trace",
-            all_stark
-                .memory_stark
-                .generate_trace(memory_ops, mem_before_values, timing)
+            all_stark.memory_stark.generate_trace(
+                memory_ops,
+                mem_before_values,
+                pruned_contexts,
+                timing
+            )
         );
         let mem_before_trace = timed!(
             timing,
@@ -196,6 +200,12 @@ impl<T: Copy> Traces<T> {
             all_stark
                 .mem_after_stark
                 .generate_trace(final_values.clone(), timing)
+        );
+
+        log::info!(
+            "mem_before_len: {}, mem_after_len: {}",
+            mem_before_values.len(),
+            final_values.len()
         );
 
         (
