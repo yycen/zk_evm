@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::anyhow;
 use ethereum_types::{Address, BigEndianHash, H256, U256};
+use log::log_enabled;
 use mpt_trie::partial_trie::{HashedPartialTrie, PartialTrie};
 use plonky2::field::extension::Extendable;
 use plonky2::field::polynomial::PolynomialValues;
@@ -212,11 +213,14 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
 
-    std::fs::write(
-        format!("txn_{:?}_before_state_trie.json", inputs.txn_number_before),
-        serde_json::to_string(&inputs.tries.state_trie).unwrap()
-    )
-    .unwrap();
+    // TODO: remove
+    if log_enabled!(log::Level::Trace) {
+        std::fs::write(
+            format!("txn_{:?}_before_state_trie.json", inputs.txn_number_before),
+            serde_json::to_string(&inputs.tries.state_trie).unwrap(),
+        )
+        .unwrap();
+    }
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
@@ -257,11 +261,15 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
             let state_trie =
                 get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr).unwrap();
-            std::fs::write(
-                format!("txn_{:?}_after_state_trie.json", inputs.txn_number_before),
-                serde_json::to_string(&state_trie).unwrap(),
-            )
-            .unwrap();
+
+            // TODO: remove
+            if log_enabled!(log::Level::Trace) {
+                std::fs::write(
+                    format!("txn_{:?}_after_state_trie.json", inputs.txn_number_before),
+                    serde_json::to_string(&state_trie).unwrap(),
+                )
+                .unwrap();
+            }
             log::debug!("Computed state trie: {:?}", state_trie);
 
             let txn_trie_ptr = u256_to_usize(

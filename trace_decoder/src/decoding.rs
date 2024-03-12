@@ -11,7 +11,7 @@ use evm_arithmetization::{
     generation::{mpt::AccountRlp, GenerationInputs, TrieInputs},
     proof::{ExtraBlockData, TrieRoots},
 };
-use log::trace;
+use log::{log_enabled, trace};
 use mpt_trie::{
     nibbles::Nibbles,
     partial_trie::{HashedPartialTrie, Node, PartialTrie},
@@ -207,45 +207,48 @@ impl ProcessedBlockTrace {
                     .collect::<Vec<_>>();
                 println!("{:#?}", accounts);
 
-                Self::write_tries_to_disk(
-                    &tries.state_trie,
-                    tries.storage_tries.iter().cloned(),
-                    "pre",
-                    "partial",
-                    other_data.b_data.b_meta.block_number.as_u64(),
-                    txn_idx,
-                );
-                Self::write_tries_to_disk(
-                    &initial_tries_for_dummies.state,
-                    initial_tries_for_dummies
-                        .storage
-                        .iter()
-                        .map(|(k, v)| (*k, v.clone())),
-                    "pre",
-                    "full",
-                    other_data.b_data.b_meta.block_number.as_u64(),
-                    txn_idx,
-                );
+                // TODO: remove
+                if log_enabled!(log::Level::Trace) {
+                    Self::write_tries_to_disk(
+                        &tries.state_trie,
+                        tries.storage_tries.iter().cloned(),
+                        "pre",
+                        "partial",
+                        other_data.b_data.b_meta.block_number.as_u64(),
+                        txn_idx,
+                    );
+                    Self::write_tries_to_disk(
+                        &initial_tries_for_dummies.state,
+                        initial_tries_for_dummies
+                            .storage
+                            .iter()
+                            .map(|(k, v)| (*k, v.clone())),
+                        "pre",
+                        "full",
+                        other_data.b_data.b_meta.block_number.as_u64(),
+                        txn_idx,
+                    );
 
-                Self::write_tries_to_disk(
-                    &tries_post.state_trie,
-                    tries_post.storage_tries.iter().cloned(),
-                    "post",
-                    "partial",
-                    other_data.b_data.b_meta.block_number.as_u64(),
-                    txn_idx,
-                );
-                Self::write_tries_to_disk(
-                    &curr_block_tries.state,
-                    curr_block_tries
-                        .storage
-                        .iter()
-                        .map(|(k, v)| (*k, v.clone())),
-                    "post",
-                    "full",
-                    other_data.b_data.b_meta.block_number.as_u64(),
-                    txn_idx,
-                );
+                    Self::write_tries_to_disk(
+                        &tries_post.state_trie,
+                        tries_post.storage_tries.iter().cloned(),
+                        "post",
+                        "partial",
+                        other_data.b_data.b_meta.block_number.as_u64(),
+                        txn_idx,
+                    );
+                    Self::write_tries_to_disk(
+                        &curr_block_tries.state,
+                        curr_block_tries
+                            .storage
+                            .iter()
+                            .map(|(k, v)| (*k, v.clone())),
+                        "post",
+                        "full",
+                        other_data.b_data.b_meta.block_number.as_u64(),
+                        txn_idx,
+                    );
+                }
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
 
