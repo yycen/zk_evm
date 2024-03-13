@@ -138,6 +138,8 @@ impl ProcessedBlockTrace {
             .map(|(txn_idx, txn_info)| {
                 trace!("Generating proof IR for txn {}...", txn_idx);
 
+                // trace!("state_accounts_with_no_accesses_but_storage_tries ({}): {:#?}", txn_idx, txn_info.nodes_used_by_txn.state_accounts_with_no_accesses_but_storage_tries);
+
                 Self::init_any_needed_empty_storage_tries(
                     &mut curr_block_tries.storage,
                     txn_info
@@ -439,6 +441,8 @@ impl ProcessedBlockTrace {
         // TODO: Replace cast once `mpt_trie` supports `into` for `usize...
         let transactions_trie =
             create_trie_subset_wrapped(&curr_block_tries.txn, once(txn_k), TrieType::Txn)?;
+
+        println!("txn_k: {:x}", txn_k);
 
         let receipts_trie =
             create_trie_subset_wrapped(&curr_block_tries.receipt, once(txn_k), TrieType::Receipt)?;
@@ -892,18 +896,21 @@ fn create_minimal_state_partial_trie(
     state_accesses: impl Iterator<Item = HashedNodeAddr>,
     additional_state_trie_paths_to_not_hash: impl Iterator<Item = Nibbles>,
 ) -> TraceParsingResult<HashedPartialTrie> {
+    let accesses: Vec<_> = state_accesses
+        .into_iter()
+        .map(Nibbles::from_h256_be)
+        .chain(additional_state_trie_paths_to_not_hash)
+        .collect();
+
+    trace!("Creating partial state trie with accesses: {:#?}...", accesses);
+
     create_trie_subset_wrapped(
         state_trie,
-        state_accesses
-            .into_iter()
-            .map(Nibbles::from_h256_be)
-            .chain(additional_state_trie_paths_to_not_hash),
+        accesses.into_iter(),
         TrieType::State,
     )
 }
 
-// TODO!!!: We really need to be appending the empty storage tries to the base
-// trie somewhere else! This is a big hack!
 fn create_minimal_storage_partial_tries<'a>(
     storage_tries: &HashMap<HashedAccountAddr, HashedPartialTrie>,
     state_accounts_with_no_accesses_but_storage_tries: &HashMap<HashedAccountAddr, TrieRootHash>,
@@ -912,6 +919,8 @@ fn create_minimal_storage_partial_tries<'a>(
 ) -> TraceParsingResult<Vec<(HashedAccountAddr, HashedPartialTrie)>> {
     accesses_per_account
         .map(|(h_addr, mem_accesses)| {
+            trace!("Looking up storage trie for hashed addr {:x}...", h_addr);
+
             // Guaranteed to exist due to calling `init_any_needed_empty_storage_tries`
             // earlier on.
             let base_storage_trie = &storage_tries[h_addr];

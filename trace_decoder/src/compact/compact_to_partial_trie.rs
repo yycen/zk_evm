@@ -115,6 +115,8 @@ impl CompactToPartialTrieExtractionOutput for StateTrieExtractionOutput {
         let c_hash = hash(&c_bytes);
         self.code.insert(c_hash, c_bytes);
 
+        trace!("Code for {:x} found in compact!", c_hash);
+
         Ok(())
     }
 
@@ -261,6 +263,8 @@ fn process_account_node(
         Some(AccountNodeCode::CodeNode(c_bytes)) => {
             let c_hash = hash(c_bytes);
             c_hash_to_code.insert(c_hash, c_bytes.clone());
+
+            trace!("Code for {:x} found in compact!", c_hash);
 
             c_hash
         }
