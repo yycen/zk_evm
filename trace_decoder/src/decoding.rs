@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
+    fs,
     iter::{self, empty, once},
 };
 
@@ -22,9 +23,9 @@ use thiserror::Error;
 use crate::{
     processed_block_trace::{NodesUsedByTxn, ProcessedBlockTrace, StateTrieWrites, TxnMetaState},
     types::{
-        HashedAccountAddr, HashedNodeAddr, HashedStorageAddr, HashedStorageAddrNibbles,
-        OtherBlockData, TriePathIter, TrieRootHash, TxnIdx, TxnProofGenIR,
-        EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED,
+        BlockHeight, HashedAccountAddr, HashedNodeAddr, HashedStorageAddr,
+        HashedStorageAddrNibbles, OtherBlockData, TriePathIter, TrieRootHash, TxnIdx,
+        TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED,
     },
     utils::{hash, update_val_if_some},
 };
@@ -93,7 +94,7 @@ struct PartialTrieState {
 }
 
 /// Additional information discovered during delta application.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct TrieDeltaApplicationOutput {
     // During delta application, if a delete occurs, we may have to make sure additional nodes
     // that are not accessed by the txn remain unhashed.
@@ -170,9 +171,123 @@ impl ProcessedBlockTrace {
                     &tries_at_start_of_txn,
                     &txn_info.nodes_used_by_txn,
                     txn_idx,
+                    delta_out.clone(),
+                    &other_data.b_data.b_meta.block_beneficiary,
+                )?;
+
+                let tries_post = Self::create_minimal_partial_tries_needed_by_txn(
+                    &curr_block_tries,
+                    &txn_info.nodes_used_by_txn,
+                    txn_idx,
                     delta_out,
                     &other_data.b_data.b_meta.block_beneficiary,
                 )?;
+
+                Self::write_state_and_storage_tries_to_disk(
+                    &tries.state_trie,
+                    tries.storage_tries.iter().cloned(),
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_state_and_storage_tries_to_disk(
+                    &initial_tries_for_dummies.state,
+                    initial_tries_for_dummies
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_state_and_storage_tries_to_disk(
+                    &tries_post.state_trie,
+                    tries_post.storage_tries.iter().cloned(),
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_state_and_storage_tries_to_disk(
+                    &curr_block_tries.state,
+                    curr_block_tries
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_single_trie_to_disk(
+                    &tries.receipts_trie,
+                    "receipt",
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &tries_post.receipts_trie,
+                    "receipt",
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &initial_tries_for_dummies.receipt,
+                    "receipt",
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &curr_block_tries.receipt,
+                    "receipt",
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_single_trie_to_disk(
+                    &tries.transactions_trie,
+                    "txn",
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &tries_post.transactions_trie,
+                    "txn",
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &initial_tries_for_dummies.txn,
+                    "txn",
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &curr_block_tries.txn,
+                    "txn",
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
                 let gen_inputs = GenerationInputs {
@@ -258,6 +373,51 @@ impl ProcessedBlockTrace {
                 storage_tries.insert(*h_addr, trie);
             };
         }
+    }
+
+    fn write_state_and_storage_tries_to_disk(
+        state_trie: &HashedPartialTrie,
+        storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>,
+        pre_post_prefix: &'static str,
+        full_partial_prefix: &'static str,
+        block_num: BlockHeight,
+        txn_idx: TxnIdx,
+    ) {
+        Self::write_single_trie_to_disk(
+            state_trie,
+            "state",
+            pre_post_prefix,
+            full_partial_prefix,
+            block_num,
+            txn_idx,
+        );
+
+        for (addr, s_trie) in storage_tries {
+            let path = format!(
+                "txn_traces/{}/{:x}/storage_trie_{}_{}_b{}_t{}.json",
+                block_num, addr, pre_post_prefix, full_partial_prefix, block_num, txn_idx,
+            );
+
+            fs::create_dir_all(format!("txn_traces/{}/{:x}", block_num, addr)).unwrap();
+            fs::write(path, serde_json::to_string(&s_trie).unwrap()).unwrap();
+        }
+    }
+
+    fn write_single_trie_to_disk(
+        trie: &HashedPartialTrie,
+        trie_name: &'static str,
+        pre_post_prefix: &'static str,
+        full_partial_prefix: &'static str,
+        block_num: BlockHeight,
+        txn_idx: TxnIdx,
+    ) {
+        fs::write(
+            format!(
+                "txn_traces/{}/{}_trie_{}_{}_b{}_t{}.json",
+                block_num, trie_name, pre_post_prefix, full_partial_prefix, block_num, txn_idx
+            ),
+            serde_json::to_string_pretty(&trie).unwrap(),
+        );
     }
 
     fn create_minimal_partial_tries_needed_by_txn(
