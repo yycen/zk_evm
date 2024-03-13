@@ -4,6 +4,7 @@ use std::iter::once;
 
 use ethereum_types::{Address, H256, U256};
 use evm_arithmetization::generation::mpt::{AccountRlp, LegacyReceiptRlp};
+use log::{debug, trace};
 use mpt_trie::nibbles::Nibbles;
 use mpt_trie::partial_trie::{HashedPartialTrie, PartialTrie};
 
@@ -92,7 +93,8 @@ impl BlockTrace {
         let txn_info = self
             .txn_info
             .into_iter()
-            .map(|t| t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver))
+            .enumerate()
+            .map(|(idx, t)| { println!("Processing txn {}...", idx); t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver) })
             .collect::<Vec<_>>();
 
         ProcessedBlockTrace {
@@ -241,6 +243,8 @@ impl TxnInfo {
         for (addr, trace) in self.traces {
             let hashed_addr = hash(addr.as_bytes());
 
+            println!("{:x} --> {:x}", addr, hashed_addr);
+
             let storage_writes = trace.storage_written.unwrap_or_default();
 
             let storage_read_keys = trace
@@ -254,7 +258,7 @@ impl TxnInfo {
             nodes_used_by_txn.storage_accesses.push((
                 hashed_addr,
                 storage_access_keys
-                    .map(|k| Nibbles::from_h256_be(hash(&k.0)))
+                    .map(|k| { trace!("Storage {:x} --> {:x}", k, hash(&k.0)); Nibbles::from_h256_be(hash(&k.0)) })
                     .collect(),
             ));
 
@@ -298,6 +302,8 @@ impl TxnInfo {
                     }
                     ContractCodeUsage::Write(c_bytes) => {
                         let c_hash = hash(&c_bytes);
+
+                        debug!("Contract created code {:x}", c_hash);
 
                         contract_code_accessed.insert(c_hash, c_bytes.0.clone());
                         code_hash_resolver.insert_code(c_hash, c_bytes.0);
