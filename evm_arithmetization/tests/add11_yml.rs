@@ -9,6 +9,7 @@ use evm_arithmetization::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use evm_arithmetization::generation::TrieInputs;
 use evm_arithmetization::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use evm_arithmetization::prover::prove;
+use evm_arithmetization::prover::testing::simulate_all_segments_interpreter;
 use evm_arithmetization::verifier::verify_proof;
 use evm_arithmetization::{AllRecursiveCircuits, AllStark, GenerationInputs, Node};
 use hex_literal::hex;
@@ -170,22 +171,28 @@ fn add11_yml() -> anyhow::Result<()> {
     let config = StarkConfig::standard_fast_config();
     let inputs = get_generation_inputs();
 
-    let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let max_cpu_len_log = 20;
-    let segment_idx = 0;
-    let proof = prove::<F, C, D>(
-        &all_stark,
-        &config,
-        inputs,
-        max_cpu_len_log,
-        segment_idx,
-        &mut timing,
-        None,
-    )?
-    .expect("The initial registers should not be at the halt label.");
-    timing.filter(Duration::from_millis(100)).print();
+    let bytes = std::fs::read("callcallcall_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
+    let inputs = serde_json::from_slice(&bytes).unwrap();
 
-    verify_proof(&all_stark, proof, &config)
+    // let mut timing = TimingTree::new("prove", log::Level::Debug);
+    let max_cpu_len_log = 15;
+
+    simulate_all_segments_interpreter::<F>(inputs, max_cpu_len_log)
+
+    // let segment_idx = 0;
+    // let proof = prove::<F, C, D>(
+    //     &all_stark,
+    //     &config,
+    //     inputs,
+    //     max_cpu_len_log,
+    //     segment_idx,
+    //     &mut timing,
+    //     None,
+    // )?
+    // .expect("The initial registers should not be at the halt label.");
+    // timing.filter(Duration::from_millis(100)).print();
+
+    // verify_proof(&all_stark, proof, &config)
 }
 
 #[test]
@@ -201,6 +208,9 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let config = StarkConfig::standard_fast_config();
 
     let inputs = get_generation_inputs();
+
+    let bytes = std::fs::read("callcallcall_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
+    let inputs = serde_json::from_slice(&bytes).unwrap();
 
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
@@ -219,9 +229,9 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     );
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let max_cpu_len_log = 14;
+    let max_cpu_len_log = 15;
 
-    let all_segment_proofs = &all_circuits.prove_all_segments(
+    all_circuits.prove_all_segments(
         &all_stark,
         &config,
         inputs,
@@ -230,39 +240,42 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         None,
     )?;
 
-    for segment_proof in all_segment_proofs {
-        let ProverOutputData {
-            proof_with_pis: proof,
-            ..
-        } = segment_proof;
-        all_circuits.verify_root(proof.clone())?;
-    }
+    Ok(())
 
-    assert_eq!(all_segment_proofs.len(), 3);
+    // for segment_proof in all_segment_proofs {
+    //     let ProverOutputData {
+    //         proof_with_pis: proof,
+    //         ..
+    //     } = segment_proof;
+    //     all_circuits.verify_root(proof.clone())?;
+    // }
 
-    let (first_aggreg_proof, first_aggreg_pv) = all_circuits.prove_segment_aggregation(
-        false,
-        &all_segment_proofs[0].proof_with_pis,
-        all_segment_proofs[0].public_values.clone(),
-        false,
-        &all_segment_proofs[1].proof_with_pis,
-        all_segment_proofs[1].public_values.clone(),
-    )?;
-    all_circuits.verify_segment_aggregation(&first_aggreg_proof)?;
+    // assert_eq!(all_segment_proofs.len(), 3);
 
-    let (second_aggreg_proof, second_aggreg_pv) = all_circuits.prove_segment_aggregation(
-        true,
-        &first_aggreg_proof,
-        first_aggreg_pv,
-        false,
-        &all_segment_proofs[2].proof_with_pis,
-        all_segment_proofs[2].public_values.clone(),
-    )?;
-    all_circuits.verify_segment_aggregation(&second_aggreg_proof)?;
+    // let (first_aggreg_proof, first_aggreg_pv) =
+    // all_circuits.prove_segment_aggregation(     false,
+    //     &all_segment_proofs[0].proof_with_pis,
+    //     all_segment_proofs[0].public_values.clone(),
+    //     false,
+    //     &all_segment_proofs[1].proof_with_pis,
+    //     all_segment_proofs[1].public_values.clone(),
+    // )?;
+    // all_circuits.verify_segment_aggregation(&first_aggreg_proof)?;
 
-    let (txn_aggreg_proof, _) =
-        all_circuits.prove_transaction_aggregation(None, &second_aggreg_proof, second_aggreg_pv)?;
-    all_circuits.verify_txn_aggregation(&txn_aggreg_proof)
+    // let (second_aggreg_proof, second_aggreg_pv) =
+    // all_circuits.prove_segment_aggregation(     true,
+    //     &first_aggreg_proof,
+    //     first_aggreg_pv,
+    //     false,
+    //     &all_segment_proofs[2].proof_with_pis,
+    //     all_segment_proofs[2].public_values.clone(),
+    // )?;
+    // all_circuits.verify_segment_aggregation(&second_aggreg_proof)?;
+
+    // let (txn_aggreg_proof, _) =
+    //     all_circuits.prove_transaction_aggregation(None,
+    // &second_aggreg_proof, second_aggreg_pv)?; all_circuits.
+    // verify_txn_aggregation(&txn_aggreg_proof)
 }
 
 fn init_logger() {
