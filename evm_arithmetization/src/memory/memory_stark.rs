@@ -195,10 +195,15 @@ pub(crate) fn generate_first_change_flags_and_rc<F: RichField>(
 impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
     /// Generate most of the trace rows. Excludes a few columns like `COUNTER`,
     /// which are generated later, after transposing to column-major form.
-    fn generate_trace_row_major(&self, mut memory_ops: Vec<MemoryOp>) -> Vec<[F; NUM_COLUMNS]> {
+    fn generate_trace_row_major(
+        &self,
+        mut memory_ops: Vec<MemoryOp>,
+    ) -> (Vec<[F; NUM_COLUMNS]>, usize) {
         // fill_gaps expects an ordered list of operations.
         memory_ops.sort_by_key(MemoryOp::sorting_key);
         Self::fill_gaps(&mut memory_ops);
+
+        let unpadded_length = memory_ops.len();
 
         memory_ops.sort_by_key(MemoryOp::sorting_key);
 
@@ -213,7 +218,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             .map(|op| op.into_row())
             .collect::<Vec<_>>();
         generate_first_change_flags_and_rc(trace_rows.as_mut_slice());
-        trace_rows
+        (trace_rows, unpadded_length)
     }
 
     /// Generates the `COUNTER`, `RANGE_CHECK` and `FREQUENCIES` columns, given
@@ -366,7 +371,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         mem_before_values: &[(MemoryAddress, U256)],
         pruned_contexts: Vec<usize>,
         timing: &mut TimingTree,
-    ) -> (Vec<PolynomialValues<F>>, Vec<Vec<F>>) {
+    ) -> (Vec<PolynomialValues<F>>, Vec<Vec<F>>, usize) {
         // First, push `mem_before` operations.
         for &(address, value) in mem_before_values {
             memory_ops.push(MemoryOp {
@@ -378,7 +383,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             });
         }
         // Generate most of the trace in row-major form.
-        let mut trace_rows = timed!(
+        let (mut trace_rows, unpadded_length) = timed!(
             timing,
             "generate trace rows",
             self.generate_trace_row_major(memory_ops)
@@ -412,6 +417,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                 .map(|column| PolynomialValues::new(column))
                 .collect(),
             mem_after_values,
+            unpadded_length,
         )
     }
 }

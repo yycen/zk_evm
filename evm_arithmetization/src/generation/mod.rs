@@ -382,10 +382,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         (RegistersState::default(), None)
     };
 
-    log::info!(
-        "Trace lengths (before padding): {:?}",
-        state.traces.get_lengths()
-    );
+    let mut trace_lengths = state.traces.get_lengths();
 
     let read_metadata = |field| state.memory.read_global_metadata(field);
     let trie_roots_before = TrieRoots {
@@ -432,6 +429,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             all_stark,
             &memory_before,
             state.pruned_contexts,
+            trace_lengths,
             config,
             timing
         )
