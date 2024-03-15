@@ -904,6 +904,7 @@ impl<F: Field> State<F> for Interpreter<F> {
         GenerationStateCheckpoint {
             registers: self.generation_state.registers,
             traces: self.generation_state.traces.checkpoint(),
+            clock: self.get_clock(),
         }
     }
 
