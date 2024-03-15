@@ -182,6 +182,7 @@ pub(crate) trait State<F: Field> {
         let mut final_mem = self.get_mut_generation_state().memory.clone();
         let mut running = true;
         let mut final_clock = 0;
+
         loop {
             let registers = self.get_registers();
             let pc = registers.program_counter;
@@ -197,6 +198,9 @@ pub(crate) trait State<F: Field> {
                 }
                 // If we are in the interpreter, we need to set the final register values.
                 self.update_interpreter_final_registers(final_registers);
+
+                log::info!("Actual final registers: {:?}", final_registers);
+
                 final_clock = self.get_clock();
                 self.final_exception()?;
             }
@@ -277,7 +281,8 @@ pub(crate) trait State<F: Field> {
                 if self.get_registers().is_kernel {
                     let offset_name = KERNEL.offset_name(self.get_registers().program_counter);
                     bail!(
-                        "{:?} in kernel at pc={}, stack={:?}, memory={:?}",
+                        "Cycle {}, {:?} in kernel at pc={}, stack={:?}, memory={:?}",
+                        self.get_clock(),
                         e,
                         offset_name,
                         self.get_stack(),
@@ -315,7 +320,14 @@ pub(crate) trait State<F: Field> {
     }
 
     /// Logs `msg` in `debug` mode, in the interpreter.
-    fn log_debug(&self, msg: String) {}
+    fn log_debug(&self, msg: String) {
+        log::debug!("{}", msg);
+    }
+
+    /// Logs `msg` in `debug` mode, in the interpreter.
+    fn log_trace(&self, msg: String) {
+        log::trace!("{}", msg);
+    }
 
     /// Logs `msg` in `info` mode, in the interpreter.
     fn log_info(&self, msg: String) {
@@ -323,7 +335,9 @@ pub(crate) trait State<F: Field> {
     }
 
     /// Logs `msg` at `level`, during witness generation.
-    fn log_log(&self, level: Level, msg: String) {}
+    fn log_log(&self, level: Level, msg: String) {
+        log::log!(level, "{}", msg);
+    }
 }
 
 #[derive(Debug)]

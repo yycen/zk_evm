@@ -327,6 +327,13 @@ where
     where
         Self: Sized,
     {
+        // #[cfg(debug_assertions)]
+        if self.get_registers().is_kernel {
+            log_kernel_instruction(self, op);
+        } else {
+            self.log_debug(format!("User instruction: {:?}", op));
+        }
+
         self.perform_op(op, opcode, row)?;
         self.incr_pc(match op {
             Operation::Syscall(_, _, _) | Operation::ExitKernel => 0,
@@ -489,20 +496,6 @@ where
         Self: Sized,
     {
         let op = self.skip_if_necessary(op)?;
-
-        #[cfg(debug_assertions)]
-        if !self.get_registers().is_kernel {
-            self.log_debug(format!(
-                "User instruction {:?}, stack = {:?}, ctx = {}",
-                op,
-                {
-                    let mut stack = self.get_stack();
-                    stack.reverse();
-                    stack
-                },
-                self.get_registers().context
-            ));
-        }
 
         match op {
             Operation::Push(n) => generate_push(n, self, row)?,

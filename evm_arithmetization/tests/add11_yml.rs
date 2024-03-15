@@ -174,25 +174,25 @@ fn add11_yml() -> anyhow::Result<()> {
     let bytes = std::fs::read("callcallcall_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
     let inputs = serde_json::from_slice(&bytes).unwrap();
 
-    // let mut timing = TimingTree::new("prove", log::Level::Debug);
+    let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len_log = 15;
 
-    simulate_all_segments_interpreter::<F>(inputs, max_cpu_len_log)
+    // simulate_all_segments_interpreter::<F>(inputs, max_cpu_len_log)
 
-    // let segment_idx = 0;
-    // let proof = prove::<F, C, D>(
-    //     &all_stark,
-    //     &config,
-    //     inputs,
-    //     max_cpu_len_log,
-    //     segment_idx,
-    //     &mut timing,
-    //     None,
-    // )?
-    // .expect("The initial registers should not be at the halt label.");
-    // timing.filter(Duration::from_millis(100)).print();
+    let segment_idx = 11;
+    let proof = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len_log,
+        segment_idx,
+        &mut timing,
+        None,
+    )?
+    .expect("The initial registers should not be at the halt label.");
+    timing.filter(Duration::from_millis(100)).print();
 
-    // verify_proof(&all_stark, proof, &config)
+    verify_proof(&all_stark, proof, &config)
 }
 
 #[test]

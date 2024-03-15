@@ -10,7 +10,7 @@ mod parser;
 pub mod stack;
 mod utils;
 
-pub(crate) mod interpreter;
+pub mod interpreter;
 #[cfg(test)]
 mod tests;
 

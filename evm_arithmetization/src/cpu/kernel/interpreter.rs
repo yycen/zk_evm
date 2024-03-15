@@ -1037,11 +1037,11 @@ impl<F: Field> State<F> for Interpreter<F> {
 
         self.fill_stack_fields(&mut row)?;
 
-        if registers.is_kernel {
-            log_kernel_instruction(self, op);
-        } else {
-            self.log_debug(format!("User instruction: {:?}", op));
-        }
+        // if registers.is_kernel {
+        //     log_kernel_instruction(self, op);
+        // } else {
+        //     self.log_debug(format!("User instruction: {:?}", op));
+        // }
 
         let generation_state = self.get_mut_generation_state();
         // Might write in general CPU columns when it shouldn't, but the correct values
