@@ -179,7 +179,7 @@ fn add11_yml() -> anyhow::Result<()> {
 
     // simulate_all_segments_interpreter::<F>(inputs, max_cpu_len_log)
 
-    let segment_idx = 11;
+    let segment_idx = 12;
     let proof = prove::<F, C, D>(
         &all_stark,
         &config,

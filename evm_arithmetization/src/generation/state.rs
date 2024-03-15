@@ -202,6 +202,7 @@ pub(crate) trait State<F: Field> {
                 log::info!("Actual final registers: {:?}", final_registers);
 
                 final_clock = self.get_clock();
+                log::info!("Final clock: {:?}", final_clock);
                 self.final_exception()?;
             }
 
@@ -507,6 +508,7 @@ impl<F: Field> State<F> for GenerationState<F> {
         GenerationStateCheckpoint {
             registers: self.registers,
             traces: self.traces.checkpoint(),
+            clock: self.get_clock(),
         }
     }
 
@@ -669,6 +671,7 @@ impl<F: Field> Transition<F> for GenerationState<F> {
 pub(crate) struct GenerationStateCheckpoint {
     pub(crate) registers: RegistersState,
     pub(crate) traces: TraceCheckpoint,
+    pub(crate) clock: usize,
 }
 
 /// Withdrawals prover input array is of the form `[addr0, amount0, ..., addrN,
