@@ -9,6 +9,7 @@ use evm_arithmetization::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use evm_arithmetization::generation::TrieInputs;
 use evm_arithmetization::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use evm_arithmetization::prover::prove;
+use evm_arithmetization::prover::testing::prove_all_segments;
 use evm_arithmetization::prover::testing::simulate_all_segments_interpreter;
 use evm_arithmetization::verifier::verify_proof;
 use evm_arithmetization::{AllRecursiveCircuits, AllStark, GenerationInputs, Node};
@@ -171,7 +172,7 @@ fn add11_yml() -> anyhow::Result<()> {
     let config = StarkConfig::standard_fast_config();
     let inputs = get_generation_inputs();
 
-    let bytes = std::fs::read("callcallcall_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
+    let bytes = std::fs::read("callcallcallcode_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
     let inputs = serde_json::from_slice(&bytes).unwrap();
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -179,7 +180,7 @@ fn add11_yml() -> anyhow::Result<()> {
 
     // simulate_all_segments_interpreter::<F>(inputs, max_cpu_len_log)
 
-    let segment_idx = 12;
+    let segment_idx = 11;
     let proof = prove::<F, C, D>(
         &all_stark,
         &config,
@@ -209,29 +210,29 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     let inputs = get_generation_inputs();
 
-    let bytes = std::fs::read("extCodeHashDeletedAccountCancun_d0g0v0_Shanghai.json").unwrap();
+    let bytes = std::fs::read("callcallcallcode_ABCB_RECURSIVE_d0g0v0_Shanghai.json").unwrap();
     let inputs = serde_json::from_slice(&bytes).unwrap();
 
-    let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
-        &all_stark,
-        &[
-            16..17,
-            8..15,
-            8..16,
-            4..15,
-            7..11,
-            4..13,
-            16..19,
-            7..18,
-            11..18,
-        ], // Minimal ranges to prove an empty list
-        &config,
-    );
+    // let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
+    //     &all_stark,
+    //     &[
+    //         16..17,
+    //         8..15,
+    //         8..16,
+    //         4..15,
+    //         7..11,
+    //         4..13,
+    //         16..19,
+    //         7..18,
+    //         11..18,
+    //     ], // Minimal ranges to prove an empty list
+    //     &config,
+    // );
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len_log = 15;
 
-    all_circuits.prove_all_segments(
+    let all_segment_proofs = prove_all_segments::<GoldilocksField, C, 2>(
         &all_stark,
         &config,
         inputs,
