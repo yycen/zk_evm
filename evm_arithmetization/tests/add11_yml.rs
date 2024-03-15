@@ -209,7 +209,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     let inputs = get_generation_inputs();
 
-    let bytes = std::fs::read("operationDiffGas_d10g0v0_Shanghai.json").unwrap();
+    let bytes = std::fs::read("extCodeHashDeletedAccountCancun_d0g0v0_Shanghai.json").unwrap();
     let inputs = serde_json::from_slice(&bytes).unwrap();
 
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
