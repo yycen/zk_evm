@@ -1431,15 +1431,18 @@ where
     ) -> anyhow::Result<Vec<ProverOutputData<F, C, D>>> {
         let mut segment_index = 0;
         let mut proofs = vec![];
-        while let Some(proof) = self.prove_segment(
-            all_stark,
-            config,
-            generation_inputs.clone(),
-            max_cpu_len,
-            segment_index,
-            timing,
-            abort_signal.clone(),
-        )? {
+        while let Some(proof) = {
+            log::info!("Segment {}...", segment_index);
+            self.prove_segment(
+                all_stark,
+                config,
+                generation_inputs.clone(),
+                max_cpu_len,
+                segment_index,
+                timing,
+                abort_signal.clone(),
+            )?
+        } {
             segment_index += 1;
             proofs.push(proof);
         }

@@ -366,8 +366,8 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 
     apply_metadata_and_tries_memops(&mut state, &inputs, &registers_before, &registers_after);
 
-    log::info!("Initial registers: {:?}", registers_before);
-    log::info!("Final registers: {:?}", registers_after);
+    // log::info!("Initial registers: {:?}", registers_before);
+    // log::info!("Final registers: {:?}", registers_after);
     let cpu_res = timed!(
         timing,
         "simulate CPU",

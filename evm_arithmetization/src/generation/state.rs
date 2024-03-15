@@ -199,10 +199,10 @@ pub(crate) trait State<F: Field> {
                 // If we are in the interpreter, we need to set the final register values.
                 self.update_interpreter_final_registers(final_registers);
 
-                log::info!("Actual final registers: {:?}", final_registers);
+                // log::info!("Actual final registers: {:?}", final_registers);
 
                 final_clock = self.get_clock();
-                log::info!("Final clock: {:?}", final_clock);
+                // log::info!("Final clock: {:?}", final_clock);
                 self.final_exception()?;
             }
 
