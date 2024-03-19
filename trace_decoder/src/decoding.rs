@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
+    fs,
     iter::{empty, once},
 };
 
-use ethereum_types::{Address, H256, U256};
+use ethereum_types::{Address, H160, H256, U256};
 use evm_arithmetization::{
     generation::{mpt::AccountRlp, GenerationInputs, TrieInputs},
     proof::{ExtraBlockData, TrieRoots},
@@ -19,8 +20,9 @@ use thiserror::Error;
 use crate::{
     processed_block_trace::{NodesUsedByTxn, ProcessedBlockTrace, StateTrieWrites, TxnMetaState},
     types::{
-        HashedAccountAddr, HashedNodeAddr, HashedStorageAddrNibbles, OtherBlockData, TrieRootHash,
-        TxnIdx, TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED, ZERO_STORAGE_SLOT_VAL_RLPED,
+        BlockHeight, HashedAccountAddr, HashedNodeAddr, HashedStorageAddrNibbles, OtherBlockData,
+        TrieRootHash, TxnIdx, TxnProofGenIR, EMPTY_ACCOUNT_BYTES_RLPED,
+        ZERO_STORAGE_SLOT_VAL_RLPED,
     },
     utils::{hash, update_val_if_some},
 };
@@ -136,10 +138,123 @@ impl ProcessedBlockTrace {
 
                 Self::apply_deltas_to_trie_state(
                     &mut curr_block_tries,
-                    txn_info.nodes_used_by_txn,
+                    &txn_info.nodes_used_by_txn,
                     &txn_info.meta,
                     txn_idx,
                 )?;
+
+                let tries_post = Self::create_minimal_partial_tries_needed_by_txn(
+                    &mut curr_block_tries,
+                    &txn_info.nodes_used_by_txn,
+                    txn_idx,
+                    &H160::zero(),
+                )?;
+
+                Self::write_state_and_storage_tries_to_disk(
+                    &tries.state_trie,
+                    tries.storage_tries.iter().cloned(),
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_state_and_storage_tries_to_disk(
+                    &initial_tries_for_dummies.state,
+                    initial_tries_for_dummies
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_state_and_storage_tries_to_disk(
+                    &tries_post.state_trie,
+                    tries_post.storage_tries.iter().cloned(),
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_state_and_storage_tries_to_disk(
+                    &curr_block_tries.state,
+                    curr_block_tries
+                        .storage
+                        .iter()
+                        .map(|(k, v)| (*k, v.clone())),
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_single_trie_to_disk(
+                    &tries.receipts_trie,
+                    "receipt",
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &tries_post.receipts_trie,
+                    "receipt",
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &initial_tries_for_dummies.receipt,
+                    "receipt",
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &curr_block_tries.receipt,
+                    "receipt",
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+
+                Self::write_single_trie_to_disk(
+                    &tries.transactions_trie,
+                    "txn",
+                    "pre",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &tries_post.transactions_trie,
+                    "txn",
+                    "post",
+                    "partial",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &initial_tries_for_dummies.txn,
+                    "txn",
+                    "pre",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
+                Self::write_single_trie_to_disk(
+                    &curr_block_tries.txn,
+                    "txn",
+                    "post",
+                    "full",
+                    other_data.b_data.b_meta.block_number.as_u64(),
+                    txn_idx,
+                );
 
                 let trie_roots_after = calculate_trie_input_hashes(&curr_block_tries);
                 let gen_inputs = GenerationInputs {
@@ -191,6 +306,51 @@ impl ProcessedBlockTrace {
         Ok(txn_gen_inputs)
     }
 
+    fn write_state_and_storage_tries_to_disk(
+        state_trie: &HashedPartialTrie,
+        storage_tries: impl Iterator<Item = (HashedAccountAddr, HashedPartialTrie)>,
+        pre_post_prefix: &'static str,
+        full_partial_prefix: &'static str,
+        block_num: BlockHeight,
+        txn_idx: TxnIdx,
+    ) {
+        Self::write_single_trie_to_disk(
+            state_trie,
+            "old_state",
+            pre_post_prefix,
+            full_partial_prefix,
+            block_num,
+            txn_idx,
+        );
+
+        for (addr, s_trie) in storage_tries {
+            let path = format!(
+                "txn_traces/old_{}/{:x}/storage_trie_{}_{}_b{}_t{}.json",
+                block_num, addr, pre_post_prefix, full_partial_prefix, block_num, txn_idx,
+            );
+
+            fs::create_dir_all(format!("txn_traces/old_{}/{:x}", block_num, addr)).unwrap();
+            fs::write(path, serde_json::to_string(&s_trie).unwrap()).unwrap();
+        }
+    }
+
+    fn write_single_trie_to_disk(
+        trie: &HashedPartialTrie,
+        trie_name: &'static str,
+        pre_post_prefix: &'static str,
+        full_partial_prefix: &'static str,
+        block_num: BlockHeight,
+        txn_idx: TxnIdx,
+    ) {
+        fs::write(
+            format!(
+                "txn_traces/old_{}/{}_trie_{}_{}_b{}_t{}.json",
+                block_num, trie_name, pre_post_prefix, full_partial_prefix, block_num, txn_idx
+            ),
+            serde_json::to_string_pretty(&trie).unwrap(),
+        );
+    }
+
     fn create_minimal_partial_tries_needed_by_txn(
         curr_block_tries: &mut PartialTrieState,
         nodes_used_by_txn: &NodesUsedByTxn,
@@ -233,11 +393,11 @@ impl ProcessedBlockTrace {
 
     fn apply_deltas_to_trie_state(
         trie_state: &mut PartialTrieState,
-        deltas: NodesUsedByTxn,
+        deltas: &NodesUsedByTxn,
         meta: &TxnMetaState,
         txn_idx: TxnIdx,
     ) -> TraceParsingResult<()> {
-        for (hashed_acc_addr, storage_writes) in deltas.storage_writes {
+        for (hashed_acc_addr, storage_writes) in deltas.storage_writes.iter() {
             let storage_trie = trie_state
                 .storage
                 .get_mut(&H256::from_slice(&hashed_acc_addr.bytes_be()))
@@ -246,12 +406,12 @@ impl ProcessedBlockTrace {
                 ))?;
 
             for (slot, val) in storage_writes
-                .into_iter()
+                .iter()
                 .map(|(k, v)| (Nibbles::from_h256_be(hash(&k.bytes_be())), v))
             {
                 // If we are writing a zero, then we actually need to perform a delete.
-                match val == ZERO_STORAGE_SLOT_VAL_RLPED {
-                    false => storage_trie.insert(slot, val),
+                match *val == ZERO_STORAGE_SLOT_VAL_RLPED {
+                    false => storage_trie.insert(slot, val.clone()),
                     true => {
                         storage_trie.delete(slot);
                     }
@@ -259,8 +419,8 @@ impl ProcessedBlockTrace {
             }
         }
 
-        for (hashed_acc_addr, s_trie_writes) in deltas.state_writes {
-            let val_k = Nibbles::from_h256_be(hashed_acc_addr);
+        for (hashed_acc_addr, s_trie_writes) in deltas.state_writes.iter() {
+            let val_k = Nibbles::from_h256_be(*hashed_acc_addr);
 
             // If the account was created, then it will not exist in the trie.
             let val_bytes = trie_state
@@ -272,7 +432,7 @@ impl ProcessedBlockTrace {
 
             s_trie_writes.apply_writes_to_state_node(
                 &mut account,
-                &hashed_acc_addr,
+                hashed_acc_addr,
                 &trie_state.storage,
             )?;
 
@@ -283,13 +443,13 @@ impl ProcessedBlockTrace {
         }
 
         // Remove any accounts that self-destructed.
-        for hashed_addr in deltas.self_destructed_accounts {
-            let k = Nibbles::from_h256_be(hashed_addr);
+        for hashed_addr in deltas.self_destructed_accounts.iter() {
+            let k = Nibbles::from_h256_be(*hashed_addr);
 
             trie_state
                 .storage
-                .remove(&hashed_addr)
-                .ok_or(TraceParsingError::MissingAccountStorageTrie(hashed_addr))?;
+                .remove(hashed_addr)
+                .ok_or(TraceParsingError::MissingAccountStorageTrie(*hashed_addr))?;
             // TODO: Once the mechanism for resolving code hashes settles, we probably want
             // to also delete the code hash mapping here as well...
 
