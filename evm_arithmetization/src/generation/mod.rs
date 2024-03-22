@@ -257,19 +257,16 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         output_debug_tries(&state);
         if KERNEL
             .offset_name(previous_pc)
-            .contains("hash_final_tries_gas_check")
+            .contains("perform_final_checks")
             || KERNEL
                 .offset_name(previous_pc)
-                .contains("hash_final_tries_txn_number_check")
+                .contains("check_state_trie")
             || KERNEL
                 .offset_name(previous_pc)
-                .contains("hash_final_tries_state_check")
+                .contains("check_txn_trie")
             || KERNEL
                 .offset_name(previous_pc)
-                .contains("hash_final_tries_txn_check")
-            || KERNEL
-                .offset_name(previous_pc)
-                .contains("hash_final_tries_receipt_check")
+                .contains("check_receipt_trie")
         {
             let state_trie =
                 get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr).unwrap();
@@ -364,6 +361,8 @@ pub(crate) fn output_debug_tries<F: RichField>(state: &GenerationState<F>) -> an
         return Ok(());
     }
 
+    println!("Past log check");
+
     // Retrieve previous PC (before jumping to KernelPanic), to see if we reached
     // `perform_final_checks`. We will output debugging information on the final
     // tries only if we got a root mismatch.
@@ -371,10 +370,10 @@ pub(crate) fn output_debug_tries<F: RichField>(state: &GenerationState<F>) -> an
 
     let label = KERNEL.offset_name(previous_pc);
 
-    if label.contains("check_state_trie")
-        || label.contains("check_txn_trie")
-        || label.contains("check_receipt_trie")
+    if true
     {
+        println!("Past label check");
+
         let state_trie_ptr = u256_to_usize(
             state
                 .memory
@@ -383,7 +382,7 @@ pub(crate) fn output_debug_tries<F: RichField>(state: &GenerationState<F>) -> an
         .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
         log::debug!(
             "Computed state trie: {:?}",
-            get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr)
+            serde_json::to_string(&get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr).unwrap())
         );
 
         let txn_trie_ptr = u256_to_usize(
@@ -394,7 +393,7 @@ pub(crate) fn output_debug_tries<F: RichField>(state: &GenerationState<F>) -> an
         .map_err(|_| anyhow!("Transactions trie pointer is too large to fit in a usize."))?;
         log::debug!(
             "Computed transactions trie: {:?}",
-            get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr)
+            serde_json::to_string(&get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr).unwrap())
         );
 
         let receipt_trie_ptr = u256_to_usize(
@@ -405,8 +404,10 @@ pub(crate) fn output_debug_tries<F: RichField>(state: &GenerationState<F>) -> an
         .map_err(|_| anyhow!("Receipts trie pointer is too large to fit in a usize."))?;
         log::debug!(
             "Computed receipts trie: {:?}",
-            get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr)
+            serde_json::to_string(&get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr).unwrap())
         );
+
+        
     }
 
     Ok(())

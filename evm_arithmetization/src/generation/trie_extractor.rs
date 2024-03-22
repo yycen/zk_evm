@@ -2,6 +2,7 @@
 //! only for debugging.
 
 use std::collections::HashMap;
+use std::fs;
 
 use ethereum_types::{BigEndianHash, H256, U256, U512};
 use mpt_trie::nibbles::Nibbles;
@@ -203,6 +204,10 @@ pub(crate) fn read_state_rlp_value(
         storage_root: storage_trie.hash(),
         code_hash: H256::from_uint(&slice[3].unwrap_or_default()),
     };
+
+    let f_name = format!("storage_c_hash_{:x}_s_root_{:x}_plonky2_post.json", account.code_hash, account.storage_root);
+    fs::write(f_name, serde_json::to_string(&storage_trie).unwrap());
+
     Ok(rlp::encode(&account).to_vec())
 }
 

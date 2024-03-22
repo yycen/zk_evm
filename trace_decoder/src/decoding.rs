@@ -131,6 +131,8 @@ impl ProcessedBlockTrace {
         // A copy of the initial extra_data possibly needed during padding.
         let extra_data_for_dummies = extra_data.clone();
 
+        println!("POTATO!!!");
+
         let mut txn_gen_inputs = self
             .txn_info
             .into_iter()

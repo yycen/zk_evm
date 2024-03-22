@@ -381,7 +381,12 @@ pub mod testing {
         let mut interpreter: Interpreter<F> =
             Interpreter::new_with_generation_inputs(initial_offset, initial_stack, inputs);
         let result = interpreter.run();
+
+        println!("{:?}", result);
+
         if result.is_err() {
+            println!("Past error check!");
+
             output_debug_tries(interpreter.get_generation_state())?;
         }
 
