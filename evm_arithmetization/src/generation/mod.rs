@@ -226,11 +226,60 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
 
+    std::fs::write(
+        format!("txn_{:?}_before_state_trie.json", inputs.txn_number_before),
+        serde_json::to_string(&inputs.tries.state_trie).unwrap(),
+    )
+    .unwrap();
+
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
     let cpu_res = timed!(timing, "simulate CPU", simulate_cpu(&mut state));
     if cpu_res.is_err() {
+        // Retrieve previous PC (before jumping to KernelPanic), to see if we reached
+        // `hash_final_tries`. We will output debugging information on the final
+        // tries only if we got a root mismatch.
+        let previous_pc = state
+            .traces
+            .cpu
+            .last()
+            .expect("We should have CPU rows")
+            .program_counter
+            .to_canonical_u64() as usize;
+
+        let state_trie_ptr = u256_to_usize(
+            state
+                .memory
+                .read_global_metadata(GlobalMetadata::StateTrieRoot),
+        )
+        .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
+
         output_debug_tries(&state);
+        if KERNEL
+            .offset_name(previous_pc)
+            .contains("hash_final_tries_gas_check")
+            || KERNEL
+                .offset_name(previous_pc)
+                .contains("hash_final_tries_txn_number_check")
+            || KERNEL
+                .offset_name(previous_pc)
+                .contains("hash_final_tries_state_check")
+            || KERNEL
+                .offset_name(previous_pc)
+                .contains("hash_final_tries_txn_check")
+            || KERNEL
+                .offset_name(previous_pc)
+                .contains("hash_final_tries_receipt_check")
+        {
+            let state_trie =
+                get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr).unwrap();
+            std::fs::write(
+                format!("txn_{:?}_after_state_trie.json", inputs.txn_number_before),
+                serde_json::to_string(&state_trie).unwrap(),
+            )
+            .unwrap();
+            log::debug!("Computed state trie: {:?}", state_trie);
+        }
 
         cpu_res?;
     }

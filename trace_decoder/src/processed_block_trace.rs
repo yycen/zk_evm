@@ -94,7 +94,10 @@ impl BlockTrace {
             .txn_info
             .into_iter()
             .enumerate()
-            .map(|(idx, t)| { println!("Processing txn {}...", idx); t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver) })
+            .map(|(idx, t)| {
+                println!("Processing txn {}...", idx);
+                t.into_processed_txn_info(&all_accounts_in_pre_image, &mut code_hash_resolver)
+            })
             .collect::<Vec<_>>();
 
         ProcessedBlockTrace {
@@ -258,7 +261,10 @@ impl TxnInfo {
             nodes_used_by_txn.storage_accesses.push((
                 hashed_addr,
                 storage_access_keys
-                    .map(|k| { trace!("Storage {:x} --> {:x}", k, hash(&k.0)); Nibbles::from_h256_be(hash(&k.0)) })
+                    .map(|k| {
+                        trace!("Storage {:x} --> {:x}", k, hash(&k.0));
+                        Nibbles::from_h256_be(hash(&k.0))
+                    })
                     .collect(),
             ));
 

@@ -138,7 +138,9 @@ impl ProcessedBlockTrace {
             .map(|(txn_idx, txn_info)| {
                 trace!("Generating proof IR for txn {}...", txn_idx);
 
-                // trace!("state_accounts_with_no_accesses_but_storage_tries ({}): {:#?}", txn_idx, txn_info.nodes_used_by_txn.state_accounts_with_no_accesses_but_storage_tries);
+                // trace!("state_accounts_with_no_accesses_but_storage_tries ({}): {:#?}",
+                // txn_idx, txn_info.nodes_used_by_txn.
+                // state_accounts_with_no_accesses_but_storage_tries);
 
                 Self::init_any_needed_empty_storage_tries(
                     &mut curr_block_tries.storage,
@@ -902,13 +904,12 @@ fn create_minimal_state_partial_trie(
         .chain(additional_state_trie_paths_to_not_hash)
         .collect();
 
-    trace!("Creating partial state trie with accesses: {:#?}...", accesses);
+    trace!(
+        "Creating partial state trie with accesses: {:#?}...",
+        accesses
+    );
 
-    create_trie_subset_wrapped(
-        state_trie,
-        accesses.into_iter(),
-        TrieType::State,
-    )
+    create_trie_subset_wrapped(state_trie, accesses.into_iter(), TrieType::State)
 }
 
 fn create_minimal_storage_partial_tries<'a>(
