@@ -10,6 +10,7 @@ use mpt_trie::partial_trie::{HashedPartialTrie, PartialTrie};
 use crate::compact::compact_prestate_processing::{
     process_compact_prestate_debug, PartialTriePreImages, ProcessedCompactOutput,
 };
+use crate::compact::compact_to_partial_trie::StateTrieExtractionOutput;
 use crate::decoding::TraceParsingResult;
 use crate::trace_protocol::{
     BlockTrace, BlockTraceTriePreImages, CombinedPreImages, ContractCodeUsage,
@@ -109,8 +110,8 @@ struct ProcessedBlockTracePreImages {
     extra_code_hash_mappings: Option<HashMap<CodeHash, Vec<u8>>>,
 }
 
-impl From<ProcessedCompactOutput> for ProcessedBlockTracePreImages {
-    fn from(v: ProcessedCompactOutput) -> Self {
+impl From<ProcessedCompactOutput<StateTrieExtractionOutput>> for ProcessedBlockTracePreImages {
+    fn from(v: ProcessedCompactOutput<StateTrieExtractionOutput>) -> Self {
         let tries = PartialTriePreImages {
             state: v.witness_out.state_trie,
             storage: v.witness_out.storage_tries,
