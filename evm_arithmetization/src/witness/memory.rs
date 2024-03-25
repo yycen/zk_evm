@@ -163,7 +163,7 @@ impl MemoryOp {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct MemoryState {
+pub struct MemoryState {
     pub(crate) contexts: Vec<MemoryContextState>,
     preinitialized_segments: HashMap<Segment, MemorySegmentState>,
 }

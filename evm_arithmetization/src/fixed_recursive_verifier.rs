@@ -51,7 +51,7 @@ use crate::proof::{
     MemCapTarget, PublicValues, PublicValuesTarget, RegistersDataTarget, TrieRoots,
     TrieRootsTarget,
 };
-use crate::prover::{check_abort_signal, prove};
+use crate::prover::{check_abort_signal, generate_all_segment_data, prove};
 use crate::recursive_verifier::{
     add_common_recursion_gates, add_virtual_public_values, get_memory_extra_looking_sum_circuit,
     recursive_stark_circuit, set_public_value_targets, PlonkWrapperCircuit, PublicInputs,
@@ -1429,6 +1429,9 @@ where
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<Vec<ProverOutputData<F, C, D>>> {
+        let all_segment_data = generate_all_segment_data::<F>(&generation_inputs, max_cpu_len)?;
+
+        for (index, segment_data) in all_segment_data.iter().enumerate() {}
         let mut segment_index = 0;
         let mut proofs = vec![];
         while let Some(proof) = self.prove_segment(

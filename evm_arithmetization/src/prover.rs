@@ -30,13 +30,13 @@ use starky::stark::Stark;
 
 use crate::all_stark::{AllStark, Table, NUM_TABLES};
 use crate::cpu::kernel::aggregator::KERNEL;
-use crate::cpu::kernel::interpreter::{generate_segment, ExtraSegmentData};
+use crate::cpu::kernel::interpreter::{generate_segment, ExtraSegmentData, Interpreter};
 use crate::generation::state::GenerationState;
 use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues, SegmentData};
 use crate::get_challenges::observe_public_values;
 use crate::memory::segments::Segment;
 use crate::proof::{AllProof, MemCap, PublicValues, RegistersData};
-use crate::witness::memory::MemoryAddress;
+use crate::witness::memory::{MemoryAddress, MemoryState};
 use crate::witness::state::RegistersState;
 
 /// Generate traces, then create all STARK proofs.
@@ -558,6 +558,109 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn generate_all_segment_data<F>(
+    inputs: &GenerationInputs,
+    max_cpu_len_log: usize,
+) -> anyhow::Result<
+    Vec<(
+        RegistersState,
+        RegistersState,
+        MemoryState,
+        ExtraSegmentData,
+    )>,
+>
+where
+    F: Field,
+{
+    let mut segment_data_vec = Vec::new();
+
+    let init_label = KERNEL.global_labels["init"];
+    let halt_label = KERNEL.global_labels["halt"];
+    let mut interpreter = Interpreter::<F>::new_with_generation_inputs(
+        init_label,
+        vec![],
+        inputs,
+        Some(max_cpu_len_log),
+    );
+    let (
+        mut registers_before,
+        mut registers_after,
+        mut before_mem_values,
+        mut opt_after_mem_values,
+    ) = (
+        RegistersState::new(),
+        RegistersState::new(),
+        MemoryState::default(),
+        Some(MemoryState::default()),
+    );
+
+    while registers_before.program_counter != halt_label {
+        // Extract extra data.
+        let extra_data = ExtraSegmentData {
+            trimmed_inputs: interpreter.generation_state.inputs.clone(),
+            bignum_modmul_result_limbs: interpreter
+                .generation_state
+                .bignum_modmul_result_limbs
+                .clone(),
+            rlp_prover_inputs: interpreter.generation_state.rlp_prover_inputs.clone(),
+            withdrawal_prover_inputs: interpreter
+                .generation_state
+                .withdrawal_prover_inputs
+                .clone(),
+            trie_root_ptrs: interpreter.generation_state.trie_root_ptrs.clone(),
+            jumpdest_table: interpreter.generation_state.jumpdest_table.clone(),
+        };
+
+        // Write initial registers.
+        [
+            registers_before.program_counter.into(),
+            (registers_before.is_kernel as usize).into(),
+            registers_before.stack_len.into(),
+            registers_before.stack_top,
+            registers_before.context.into(),
+            registers_before.gas_used.into(),
+        ]
+        .iter()
+        .enumerate()
+        .map(|(i, reg_content)| {
+            let (addr, val) = (
+                MemoryAddress::new_u256s(
+                    0.into(),
+                    (Segment::RegistersStates.unscale()).into(),
+                    i.into(),
+                )
+                .expect("All input values are known to be valid for MemoryAddress"),
+                *reg_content,
+            );
+            interpreter.generation_state.memory.set(addr, val);
+        });
+
+        interpreter.generation_state.registers = RegistersState {
+            program_counter: init_label,
+            is_kernel: true,
+            ..registers_before
+        };
+        interpreter.clock = 0;
+
+        (registers_after, opt_after_mem_values) = interpreter.run()?;
+        let after_mem_values = opt_after_mem_values.expect(
+            "We are in the interpreter: the run should return a memory
+        state",
+        );
+
+        segment_data_vec.push((
+            registers_before,
+            registers_after,
+            before_mem_values.clone(),
+            extra_data,
+        ));
+
+        (registers_before, before_mem_values) = (registers_after, after_mem_values);
+    }
+
+    Ok(segment_data_vec)
 }
 
 /// A utility module designed to test witness generation externally.
