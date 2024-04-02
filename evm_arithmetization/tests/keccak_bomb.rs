@@ -107,7 +107,7 @@ fn test_keccak_bomb() -> anyhow::Result<()> {
         logs: vec![],
     };
     let mut receipts_trie = HashedPartialTrie::from(Node::Empty);
-    receipts_trie.insert(Nibbles::from_str("0x80").unwrap(), receipt_0.encode(2));
+    receipts_trie.insert(Nibbles::from_str("0x80").unwrap(), receipt_0.encode(0));
     let transactions_trie: HashedPartialTrie = Node::Leaf {
         nibbles: Nibbles::from_str("0x80").unwrap(),
         value: txn.to_vec(),
