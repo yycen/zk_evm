@@ -10,7 +10,7 @@ use mpt_trie::partial_trie::{HashedPartialTrie, PartialTrie};
 use crate::compact::compact_prestate_processing::{
     process_compact_prestate_debug, PartialTriePreImages, ProcessedCompactOutput,
 };
-use crate::compact::compact_to_partial_trie::StateTrieExtractionOutput;
+use crate::compact::compact_to_mpt_trie::StateTrieExtractionOutput;
 use crate::decoding::TraceParsingResult;
 use crate::trace_protocol::{
     BlockTrace, BlockTraceTriePreImages, CombinedPreImages, ContractCodeUsage,

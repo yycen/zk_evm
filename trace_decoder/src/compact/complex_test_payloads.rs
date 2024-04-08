@@ -3,11 +3,10 @@ use mpt_trie::partial_trie::PartialTrie;
 
 use super::{
     compact_prestate_processing::{
-        process_compact_prestate, process_compact_prestate_debug,
-        process_compact_prestate_debug_smt, CompactParsingResult, PartialTriePreImages,
+        process_compact_prestate, process_compact_prestate_debug, CompactParsingResult,
         ProcessedCompactOutput,
     },
-    compact_to_partial_trie::StateTrieExtractionOutput,
+    compact_to_mpt_trie::StateTrieExtractionOutput,
 };
 use crate::{
     trace_protocol::TrieCompact,
