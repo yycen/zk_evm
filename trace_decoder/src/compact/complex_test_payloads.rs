@@ -1,12 +1,15 @@
 use evm_arithmetization::generation::mpt::AccountRlp;
 use mpt_trie::partial_trie::PartialTrie;
+use plonky2::plonk::config::GenericHashOut;
 
 use super::{
     compact_mpt_processing::{
-        process_compact_mpt_prestate_debug, process_compact_prestate, ProcessedCompactOutput,
+        process_compact_mpt_prestate, process_compact_mpt_prestate_debug, ProcessedCompactOutput,
     },
-    compact_processing_common::CompactParsingResult,
+    compact_processing_common::{CompactParsingResult, Header},
+    compact_smt_processing::process_compact_smt_prestate_debug,
     compact_to_mpt_trie::StateTrieExtractionOutput,
+    compact_to_smt_trie::SmtStateTrieExtractionOutput,
 };
 use crate::{
     trace_protocol::TrieCompact,
@@ -39,8 +42,12 @@ pub(crate) const TEST_PAYLOAD_8: TestProtocolInputAndRoot = TestProtocolInputAnd
     root_str: "13299166128749950557917138551506763411768033302102236915549878991276543333248",
 };
 
-type ProcessMptCompactPrestateFn =
-    fn(TrieCompact) -> CompactParsingResult<ProcessedCompactOutput<StateTrieExtractionOutput>>;
+type ProcessMptCompactPrestateFn = ProcessedCompactPrestateFn<StateTrieExtractionOutput>;
+
+type ProcessSmtCompactPrestateFn = ProcessedCompactPrestateFn<SmtStateTrieExtractionOutput>;
+
+type ProcessedCompactPrestateFn<T> =
+    fn(TrieCompact) -> CompactParsingResult<ProcessedCompactOutput<T>>;
 
 pub(crate) struct TestProtocolInputAndRoot {
     pub(crate) byte_str: &'static str,
@@ -49,30 +56,24 @@ pub(crate) struct TestProtocolInputAndRoot {
 
 impl TestProtocolInputAndRoot {
     pub(crate) fn parse_and_check_hash_matches(self) {
-        self.parse_and_check_hash_matches_common(process_compact_prestate);
+        self.parse_and_check_mpt_trie(process_compact_mpt_prestate);
     }
 
     pub(crate) fn parse_and_check_hash_matches_with_debug(self) {
-        self.parse_and_check_hash_matches_common(process_compact_mpt_prestate_debug);
+        self.parse_and_check_mpt_trie(process_compact_mpt_prestate_debug);
     }
 
     pub(crate) fn parse_and_check_hash_matches_with_debug_smt(self) {
-        todo!()
-        // self.parse_and_check_hash_matches_common(process_compact_prestate_debug_smt);
+        self.parse_and_check_smt_trie(process_compact_smt_prestate_debug)
     }
 
-    fn parse_and_check_hash_matches_common(
-        self,
-        process_compact_prestate_f: ProcessMptCompactPrestateFn,
-    ) {
+    fn parse_and_check_mpt_trie(self, process_compact_prestate_f: ProcessMptCompactPrestateFn) {
         let protocol_bytes = hex::decode(self.byte_str).unwrap();
-        let expected_hash = TrieRootHash::from_slice(&hex::decode(self.root_str).unwrap());
 
         let out = match process_compact_prestate_f(TrieCompact(protocol_bytes)) {
             Ok(x) => x,
             Err(err) => panic!("{}", err.to_string()),
         };
-        let trie_hash = out.witness_out.state_trie.hash();
 
         print_value_and_hash_nodes_of_trie(&out.witness_out.state_trie);
 
@@ -80,10 +81,26 @@ impl TestProtocolInputAndRoot {
             print_value_and_hash_nodes_of_storage_trie(hashed_addr, s_trie);
         }
 
-        assert!(out.header.version_is_compatible(1));
-        assert_eq!(trie_hash, expected_hash);
-
+        let hash = out.witness_out.state_trie.hash();
+        self.header_and_hash_checks(hash, out.header);
         Self::assert_non_all_storage_roots_exist_in_storage_trie_map(&out.witness_out);
+    }
+
+    fn parse_and_check_smt_trie(self, process_compact_prestate_f: ProcessSmtCompactPrestateFn) {
+        let protocol_bytes = hex::decode(self.byte_str).unwrap();
+
+        let out = process_compact_prestate_f(TrieCompact(protocol_bytes))
+            .unwrap_or_else(|err| panic!("{}", err));
+        let hash = TrieRootHash::from_slice(&out.witness_out.state_smt_trie.root.to_bytes());
+
+        self.header_and_hash_checks(hash, out.header);
+    }
+
+    fn header_and_hash_checks(self, calculated_hash: TrieRootHash, header: Header) {
+        let expected_hash = TrieRootHash::from_slice(&hex::decode(self.root_str).unwrap());
+
+        assert!(header.version_is_compatible(1));
+        assert_eq!(calculated_hash, expected_hash);
     }
 
     fn assert_non_all_storage_roots_exist_in_storage_trie_map(out: &StateTrieExtractionOutput) {
