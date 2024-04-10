@@ -7,8 +7,8 @@ use evm_arithmetization::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use mpt_trie::nibbles::Nibbles;
 use mpt_trie::partial_trie::{HashedPartialTrie, PartialTrie};
 
-use crate::compact::compact_prestate_processing::{
-    process_compact_prestate_debug, PartialTriePreImages, ProcessedCompactOutput,
+use crate::compact::compact_mpt_processing::{
+    process_compact_mpt_prestate_debug, PartialTriePreImages, ProcessedCompactOutput,
 };
 use crate::compact::compact_to_mpt_trie::StateTrieExtractionOutput;
 use crate::decoding::TraceParsingResult;
@@ -180,7 +180,7 @@ fn process_multiple_storage_tries(
 
 fn process_compact_trie(trie: TrieCompact) -> ProcessedBlockTracePreImages {
     // TODO: Wrap in proper result type...
-    let out = process_compact_prestate_debug(trie).unwrap();
+    let out = process_compact_mpt_prestate_debug(trie).unwrap();
 
     // TODO: Make this into a result...
     assert!(out.header.version_is_compatible(COMPATIBLE_HEADER_VERSION));
