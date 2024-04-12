@@ -4,7 +4,7 @@ mod compact_processing_common;
 pub mod compact_smt_processing;
 pub mod compact_to_mpt_trie;
 pub mod compact_to_smt_trie;
-mod compact_to_trie_common;
+// mod compact_to_trie_common;
 mod tmp;
 
 #[cfg(test)]
